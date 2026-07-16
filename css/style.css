@@ -3027,3 +3027,37 @@ html[data-theme="blue"] .merge-progress-bar-track{ background: #c8daf0; }
   .theme-switch{ order: 2; margin-left: auto; }
 }
 
+
+/* ==========================================================
+   PDF Tools Header Button
+   ========================================================== */
+.pdf-tools-header-btn{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--radius-s);
+  text-decoration: none;
+  color: #fff;
+  background: linear-gradient(135deg, var(--navy-700), var(--navy-800));
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.pdf-tools-header-btn:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15,41,66,0.3);
+  background: linear-gradient(135deg, var(--navy-600), var(--navy-700));
+  border-color: var(--gold);
+}
+.pdf-tools-header-btn svg{
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+@media (max-width: 768px){
+  .pdf-tools-btn-text{ display: none; }
+  .pdf-tools-header-btn{ padding: 8px 10px; }
+}
