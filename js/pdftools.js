@@ -172,8 +172,8 @@ function renderPageGrid(containerId, pages, options = {}) {
         <button class="page-thumb-action rot-ccw" data-idx="${i}" title="Rotate CCW">↺</button>
         <button class="page-thumb-action del" data-idx="${i}" title="Delete">✕</button>
       </div>` : ''}
-      ${p.thumbnail ? `<img src="${p.thumbnail}" alt="Page ${p.pageNum}" loading="lazy">` : '<div style="padding:20px;text-align:center;color:var(--ink-faint);font-size:11px;">Loading...</div>'}
-      <div class="page-thumb-label">${p.label || p.pageNum}${p.rotation ? ' ('+p.rotation+'°)' : ''}</div>
+      ${p.thumbnail ? `<img src="${p.thumbnail}" alt="Page ${p.pageNum}" loading="lazy"${p.rotation ? ' style="transform:rotate('+p.rotation+'deg)"' : ''}>` : '<div style="padding:20px;text-align:center;color:var(--ink-faint);font-size:11px;">Loading...</div>'}
+      <div class="page-thumb-label">${p.label || p.pageNum}</div>
     </div>
   `).join('');
 
@@ -349,6 +349,47 @@ function initSplitTool() {
   undo = new UndoRedoManager();
   undo.bind('split-undo', 'split-redo');
   undo.onChange = (state) => applyState(state);
+
+  /* Select All / Deselect All */
+  document.querySelector('#split-toolbar .page-select-all')?.addEventListener('click', () => {
+    const all = allPages();
+    all.forEach(p => { p.selected = true; });
+    renderSplitGrid();
+  });
+  document.querySelector('#split-toolbar .page-deselect-all')?.addEventListener('click', () => {
+    const all = allPages();
+    all.forEach(p => { p.selected = false; });
+    renderSplitGrid();
+  });
+  /* Rotate All (for selected, or all if none selected) */
+  document.querySelector('#split-toolbar .page-rotate-cw-all')?.addEventListener('click', () => {
+    const all = allPages();
+    const sel = all.filter(p => p.selected);
+    (sel.length ? sel : all).forEach(p => { p.rotation = (p.rotation || 0) + 90; });
+    undo.push(getState()); renderSplitGrid();
+  });
+  document.querySelector('#split-toolbar .page-rotate-ccw-all')?.addEventListener('click', () => {
+    const all = allPages();
+    const sel = all.filter(p => p.selected);
+    (sel.length ? sel : all).forEach(p => { p.rotation = (p.rotation || 0) - 90; });
+    undo.push(getState()); renderSplitGrid();
+  });
+  /* Delete Selected */
+  document.querySelector('#split-toolbar .page-delete-selected')?.addEventListener('click', () => {
+    const all = allPages();
+    // Remove selected pages from their PDFs
+    for (let i = all.length - 1; i >= 0; i--) {
+      if (all[i].selected) {
+        let count = 0;
+        for (const f of pdfFiles) {
+          if (i < count + f.pages.length) { f.pages.splice(i - count, 1); break; }
+          count += f.pages.length;
+        }
+      }
+    }
+    pdfFiles = pdfFiles.filter(f => f.pages.length > 0);
+    undo.push(getState()); renderSplitGrid(); updateSplitUI();
+  });
 
   /* Export */
   document.getElementById('split-start').addEventListener('click', async () => {
@@ -618,7 +659,10 @@ function initMergeTool() {
    IMAGE TO PDF
    =========================================================== */
 function initImg2PdfTool() {
-  let images = []; // { file, data, dataUrl, rotation, selected, brightness, contrast }
+  let images = [];
+  let selectedFilter = 'original';
+  let selectedImgIdx = null; // for manual crop
+  let cropStart = null; // for manual crop drag
   let undo;
   const gridId = 'img2pdf-grid';
 
@@ -627,8 +671,8 @@ function initImg2PdfTool() {
       name: img.file.name,
       rotation: img.rotation,
       selected: img.selected,
-      brightness: img.brightness,
-      contrast: img.contrast
+      filter: img.filter || 'original',
+      crop: img.crop || null
     }));
   }
   function applyState(state) {
@@ -643,19 +687,28 @@ function initImg2PdfTool() {
   function renderImageGrid() {
     const el = document.getElementById(gridId);
     if (!el) return;
-    el.innerHTML = images.map((img, i) => `
-      <div class="img-grid-item${img.selected ? ' selected' : ''}" data-idx="${i}" draggable="true">
+    el.innerHTML = images.map((img, i) => {
+      const rot = img.rotation || 0;
+      let filterCss = '';
+      switch (img.filter || 'original') {
+        case 'enhance': filterCss = 'contrast(1.15) saturate(1.1) brightness(1.05)'; break;
+        case 'scan': filterCss = 'contrast(1.3) brightness(1.1) saturate(0.9)'; break;
+        case 'bw': filterCss = 'grayscale(1) contrast(1.2) brightness(1.05)'; break;
+        default: filterCss = '';
+      }
+      const cropStyle = img.crop ? `;clip-path:inset(${img.crop.t*100}% ${(1-img.crop.r)*100}% ${(1-img.crop.b)*100}% ${img.crop.l*100}%)` : '';
+      return `<div class="img-grid-item${img.selected ? ' selected' : ''}" data-idx="${i}" draggable="true">
         <div class="img-check">${img.selected ? '✓' : ''}</div>
-        <img src="${img.dataUrl}" alt="${img.file.name}" style="${img.rotation ? 'transform:rotate('+img.rotation+'deg)' : ''}${img.brightness !== undefined ? ';filter:brightness('+(img.brightness/100)+') contrast('+(img.contrast/100)+')' : ''}">
-        <div class="img-label">${img.file.name.substring(0, 15)}${img.rotation ? ' ('+img.rotation+'°)' : ''}</div>
-      </div>
-    `).join('');
+        <img src="${img.dataUrl}" alt="${img.file.name}" style="transform:rotate(${rot}deg);filter:${filterCss}${cropStyle}">
+        <div class="img-label">${img.file.name.substring(0, 15)}</div>
+      </div>`;
+    }).join('');
 
     el.querySelectorAll('.img-grid-item').forEach(item => {
       const idx = parseInt(item.dataset.idx, 10);
-      item.addEventListener('click', () => {
-        images[idx].selected = !images[idx].selected;
-        renderImageGrid();
+      item.addEventListener('click', (e) => {
+        // Show large preview on click
+        showImagePreview(idx);
       });
       item.addEventListener('dragstart', (e) => {
         e.dataTransfer.effectAllowed = 'move';
@@ -677,6 +730,23 @@ function initImg2PdfTool() {
     });
   }
 
+  function showImagePreview(idx) {
+    const img = images[idx];
+    if (!img) return;
+    selectedImgIdx = idx;
+    const area = document.getElementById('img2pdf-preview-area');
+    const imgEl = document.getElementById('img2pdf-preview-img');
+    area.classList.remove('hidden');
+    imgEl.src = img.dataUrl;
+    
+    // Toggle selection for preview
+    images.forEach((i, n) => { i.selected = n === idx; });
+    renderImageGrid();
+    
+    // Hide crop overlay initially
+    document.getElementById('img2pdf-crop-overlay').classList.add('hidden');
+  }
+
   function updateImgUI() {
     const tb = document.getElementById('img2pdf-toolbar');
     if (tb) tb.classList.toggle('hidden', images.length === 0);
@@ -684,6 +754,8 @@ function initImg2PdfTool() {
     if (ub) ub.classList.toggle('hidden', images.length === 0);
     const opts = document.getElementById('img2pdf-options');
     if (opts) opts.classList.toggle('hidden', images.length === 0);
+    const area = document.getElementById('img2pdf-preview-area');
+    if (images.length === 0 && area) area.classList.add('hidden');
     const cnt = document.getElementById('img2pdf-count');
     if (cnt) cnt.textContent = images.length + ' images';
     const btn = document.getElementById('img2pdf-start');
@@ -708,7 +780,7 @@ function initImg2PdfTool() {
       images.push({
         file, data, dataUrl,
         rotation: 0, selected: false,
-        brightness: 100, contrast: 100
+        filter: 'original', crop: null
       });
     }
     undo.reset();
@@ -725,50 +797,321 @@ function initImg2PdfTool() {
 
   /* Toolbar actions */
   document.querySelector('.img-rotate-cw-all')?.addEventListener('click', () => {
-    if (images.length) {
-      const sel = images.filter(i => i.selected);
-      (sel.length ? sel : images).forEach(i => { i.rotation = (i.rotation || 0) + 90; });
-      undo.push(getState()); renderImageGrid();
+    if (!images.length) return;
+    const sel = images.filter(i => i.selected);
+    (sel.length ? sel : images).forEach(i => { i.rotation = (i.rotation || 0) + 90; });
+    undo.push(getState()); renderImageGrid();
+    // Refresh preview if open
+    if (selectedImgIdx !== null && images[selectedImgIdx]) {
+      document.getElementById('img2pdf-preview-img').style.transform = 'rotate('+images[selectedImgIdx].rotation+'deg)';
     }
   });
   document.querySelector('.img-rotate-ccw-all')?.addEventListener('click', () => {
-    if (images.length) {
-      const sel = images.filter(i => i.selected);
-      (sel.length ? sel : images).forEach(i => { i.rotation = (i.rotation || 0) - 90; });
-      undo.push(getState()); renderImageGrid();
+    if (!images.length) return;
+    const sel = images.filter(i => i.selected);
+    (sel.length ? sel : images).forEach(i => { i.rotation = (i.rotation || 0) - 90; });
+    undo.push(getState()); renderImageGrid();
+    if (selectedImgIdx !== null && images[selectedImgIdx]) {
+      document.getElementById('img2pdf-preview-img').style.transform = 'rotate('+images[selectedImgIdx].rotation+'deg)';
     }
   });
   document.querySelector('.img-delete-selected')?.addEventListener('click', () => {
     images = images.filter(i => !i.selected);
+    if (selectedImgIdx !== null && !images[selectedImgIdx]) {
+      document.getElementById('img2pdf-preview-area').classList.add('hidden');
+      selectedImgIdx = null;
+    }
     undo.push(getState()); renderImageGrid(); updateImgUI();
   });
 
-  /* Filters */
-  const brInput = document.getElementById('img-filter-brightness');
-  const conInput = document.getElementById('img-filter-contrast');
-  const grayBtn = document.getElementById('img-filter-grayscale');
-
-  function applyFiltersToSelected() {
-    const sel = images.filter(i => i.selected);
-    if (!sel.length) { toast('Select images to apply filters', 'error'); return; }
-    sel.forEach(i => {
-      i.brightness = parseInt(brInput.value, 10);
-      i.contrast = parseInt(conInput.value, 10);
-    });
+  /* Auto Crop */
+  document.querySelector('.img-crop-auto')?.addEventListener('click', async () => {
+    if (!images.length) { toast('No images to crop', 'error'); return; }
+    toast('Auto cropping all images...');
+    for (let i = 0; i < images.length; i++) {
+      const img = await autoCropImage(images[i]);
+      if (img) images[i] = img;
+    }
+    undo.push(getState());
     renderImageGrid();
-  }
-
-  brInput?.addEventListener('change', applyFiltersToSelected);
-  conInput?.addEventListener('change', applyFiltersToSelected);
-  grayBtn?.addEventListener('click', () => {
-    const sel = images.filter(i => i.selected);
-    if (!sel.length) { toast('Select images to apply grayscale', 'error'); return; }
-    // Set contrast to 0 (effectively grayscale through CSS filter)
-    sel.forEach(i => { i.contrast = 0; });
-    renderImageGrid();
+    // Refresh preview
+    if (selectedImgIdx !== null && images[selectedImgIdx]) {
+      document.getElementById('img2pdf-preview-img').src = images[selectedImgIdx].dataUrl;
+    }
+    toast('Auto crop complete!', 'success');
   });
 
-  /* Preview */
+  async function autoCropImage(img) {
+    try {
+      const imgEl = new Image();
+      const loaded = new Promise((res, rej) => { imgEl.onload = res; imgEl.onerror = rej; });
+      imgEl.src = img.dataUrl;
+      await loaded;
+      
+      // Create a canvas to analyze
+      const c = document.createElement('canvas');
+      const ctx = c.getContext('2d');
+      c.width = imgEl.naturalWidth;
+      c.height = imgEl.naturalHeight;
+      ctx.drawImage(imgEl, 0, 0);
+      
+      const imageData = ctx.getImageData(0, 0, c.width, c.height);
+      const data = imageData.data;
+      const w = c.width, h = c.height;
+      
+      // Find content bounds by looking for non-white/non-black edges
+      // Simple algorithm: detect variance from background
+      let top = 0, bottom = h, left = 0, right = w;
+      const threshold = 30;
+      const margin = Math.min(w, h) * 0.02; // ~2% safety margin
+      
+      // Sample pixels to find content boundaries
+      const step = Math.max(1, Math.floor(Math.min(w, h) / 200));
+      
+      // Top edge
+      for (let y = 0; y < h * 0.5; y += step) {
+        let hasContent = false;
+        for (let x = 0; x < w; x += step) {
+          const idx = (y * w + x) * 4;
+          const r = data[idx], g = data[idx+1], b = data[idx+2];
+          const lum = 0.299*r + 0.587*g + 0.114*b;
+          if (Math.abs(lum - 255) > threshold && Math.abs(lum - 0) > threshold) {
+            hasContent = true; break;
+          }
+        }
+        if (hasContent) { top = y; break; }
+      }
+      
+      // Bottom edge
+      for (let y = h - 1; y > h * 0.5; y -= step) {
+        let hasContent = false;
+        for (let x = 0; x < w; x += step) {
+          const idx = (y * w + x) * 4;
+          const r = data[idx], g = data[idx+1], b = data[idx+2];
+          const lum = 0.299*r + 0.587*g + 0.114*b;
+          if (Math.abs(lum - 255) > threshold && Math.abs(lum - 0) > threshold) {
+            hasContent = true; break;
+          }
+        }
+        if (hasContent) { bottom = y; break; }
+      }
+      
+      // Left edge
+      for (let x = 0; x < w * 0.5; x += step) {
+        let hasContent = false;
+        for (let y = top; y < bottom; y += step) {
+          const idx = (y * w + x) * 4;
+          const r = data[idx], g = data[idx+1], b = data[idx+2];
+          const lum = 0.299*r + 0.587*g + 0.114*b;
+          if (Math.abs(lum - 255) > threshold && Math.abs(lum - 0) > threshold) {
+            hasContent = true; break;
+          }
+        }
+        if (hasContent) { left = x; break; }
+      }
+      
+      // Right edge
+      for (let x = w - 1; x > w * 0.5; x -= step) {
+        let hasContent = false;
+        for (let y = top; y < bottom; y += step) {
+          const idx = (y * w + x) * 4;
+          const r = data[idx], g = data[idx+1], b = data[idx+2];
+          const lum = 0.299*r + 0.587*g + 0.114*b;
+          if (Math.abs(lum - 255) > threshold && Math.abs(lum - 0) > threshold) {
+            hasContent = true; break;
+          }
+        }
+        if (hasContent) { right = x; break; }
+      }
+      
+      // Apply safety margin
+      const mX = Math.max(margin, w * 0.01);
+      const mY = Math.max(margin, h * 0.01);
+      top = Math.max(0, top - mY);
+      bottom = Math.min(h, bottom + mY);
+      left = Math.max(0, left - mX);
+      right = Math.min(w, right + mX);
+      
+      // Store crop as percentages
+      img.crop = {
+        t: top / h,
+        b: bottom / h,
+        l: left / w,
+        r: right / w
+      };
+      
+      return img;
+    } catch (e) {
+      console.error('Auto crop failed:', e);
+      toast('Auto crop failed for ' + img.file.name, 'error');
+      return img;
+    }
+  }
+
+  /* Manual Crop */
+  document.querySelector('.img-crop-manual')?.addEventListener('click', () => {
+    if (selectedImgIdx === null || !images[selectedImgIdx]) {
+      toast('Click on an image first to select it', 'error');
+      return;
+    }
+    const overlay = document.getElementById('img2pdf-crop-overlay');
+    const frame = document.getElementById('crop-frame');
+    overlay.classList.remove('hidden');
+    
+    // Set initial crop frame to cover ~90% of the image
+    const container = document.querySelector('.img-preview-container');
+    const cRect = container.getBoundingClientRect();
+    const margin = 20; // px
+    frame.style.left = margin + 'px';
+    frame.style.top = margin + 'px';
+    frame.style.width = (cRect.width - margin*2) + 'px';
+    frame.style.height = (cRect.height - margin*2) + 'px';
+    
+    // Make frame draggable
+    makeCropDraggable(frame, container);
+  });
+
+  function makeCropDraggable(frame, container) {
+    let isDragging = false, isResizing = false;
+    let startX, startY, startRect;
+    let resizeHandle = null;
+
+    const onStart = (e, handle) => {
+      isDragging = handle === 'frame';
+      isResizing = !!handle && handle !== 'frame';
+      resizeHandle = handle;
+      startX = e.clientX || e.touches?.[0]?.clientX || 0;
+      startY = e.clientY || e.touches?.[0]?.clientY || 0;
+      startRect = frame.getBoundingClientRect();
+      
+      const onMove = (ev) => {
+        ev.preventDefault();
+        const cx = ev.clientX || ev.touches?.[0]?.clientX || 0;
+        const cy = ev.clientY || ev.touches?.[0]?.clientY || 0;
+        const dx = cx - startX;
+        const dy = cy - startY;
+        const cRect = container.getBoundingClientRect();
+        const minSize = 30;
+        
+        if (isResizing && resizeHandle) {
+          let top = startRect.top - cRect.top;
+          let left = startRect.left - cRect.left;
+          let width = startRect.width;
+          let height = startRect.height;
+          
+          if (resizeHandle.includes('e')) { width = Math.max(minSize, startRect.width + dx); }
+          if (resizeHandle.includes('w')) { 
+            const newLeft = Math.max(0, startRect.left - cRect.top + dx);
+            width = Math.max(minSize, startRect.right - cRect.left - newLeft);
+            left = newLeft;
+          }
+          if (resizeHandle.includes('s')) { height = Math.max(minSize, startRect.height + dy); }
+          if (resizeHandle.includes('n')) {
+            const newTop = Math.max(0, startRect.top - cRect.top + dy);
+            height = Math.max(minSize, startRect.bottom - cRect.top - newTop);
+            top = newTop;
+          }
+          
+          frame.style.left = left + 'px';
+          frame.style.top = top + 'px';
+          frame.style.width = width + 'px';
+          frame.style.height = height + 'px';
+        } else if (isDragging) {
+          const newLeft = Math.max(0, Math.min(cRect.width - startRect.width, startRect.left - cRect.left + dx));
+          const newTop = Math.max(0, Math.min(cRect.height - startRect.height, startRect.top - cRect.top + dy));
+          frame.style.left = newLeft + 'px';
+          frame.style.top = newTop + 'px';
+        }
+      };
+      
+      const onEnd = () => {
+        isDragging = false;
+        isResizing = false;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onEnd);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onEnd);
+      };
+      
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onEnd);
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onEnd);
+    };
+
+    // Frame drag
+    frame.addEventListener('mousedown', (e) => {
+      if (e.target.classList.contains('crop-handle')) return;
+      onStart(e, 'frame');
+    });
+    frame.addEventListener('touchstart', (e) => {
+      if (e.target.classList.contains('crop-handle')) return;
+      onStart(e, 'frame');
+    }, { passive: false });
+
+    // Handle drag
+    frame.querySelectorAll('.crop-handle').forEach(h => {
+      const dir = h.className.split('-').pop();
+      h.addEventListener('mousedown', (e) => { e.stopPropagation(); onStart(e, dir); });
+      h.addEventListener('touchstart', (e) => { e.stopPropagation(); onStart(e, dir); }, { passive: false });
+    });
+  }
+
+  /* Apply Crop */
+  document.getElementById('img2pdf-crop-apply')?.addEventListener('click', () => {
+    if (selectedImgIdx === null || !images[selectedImgIdx]) return;
+    const frame = document.getElementById('crop-frame');
+    const container = document.querySelector('.img-preview-container');
+    const cRect = container.getBoundingClientRect();
+    const fRect = frame.getBoundingClientRect();
+    
+    const crop = {
+      l: Math.max(0, (fRect.left - cRect.left) / cRect.width),
+      t: Math.max(0, (fRect.top - cRect.top) / cRect.height),
+      r: Math.min(1, (fRect.right - cRect.left) / cRect.width),
+      b: Math.min(1, (fRect.bottom - cRect.top) / cRect.height)
+    };
+    
+    images[selectedImgIdx].crop = crop;
+    document.getElementById('img2pdf-crop-overlay').classList.add('hidden');
+    undo.push(getState());
+    renderImageGrid();
+    toast('Crop applied', 'success');
+  });
+
+  document.getElementById('img2pdf-crop-cancel')?.addEventListener('click', () => {
+    document.getElementById('img2pdf-crop-overlay').classList.add('hidden');
+  });
+
+  /* Filter buttons */
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedFilter = btn.dataset.filter;
+      
+      // Apply to selected images or all if none selected
+      const sel = images.filter(i => i.selected);
+      (sel.length ? sel : images).forEach(i => { i.filter = selectedFilter; });
+      renderImageGrid();
+      // Refresh preview if open
+      if (selectedImgIdx !== null && images[selectedImgIdx]) {
+        const filterCss = getFilterCss(selectedFilter);
+        document.getElementById('img2pdf-preview-img').style.filter = filterCss;
+      }
+    });
+  });
+
+  function getFilterCss(filter) {
+    switch (filter) {
+      case 'enhance': return 'contrast(1.15) saturate(1.1) brightness(1.05)';
+      case 'scan': return 'contrast(1.3) brightness(1.1) saturate(0.9)';
+      case 'bw': return 'grayscale(1) contrast(1.2) brightness(1.05)';
+      default: return '';
+    }
+  }
+
+  /* Preview PDF */
   document.getElementById('img2pdf-preview-btn')?.addEventListener('click', async () => {
     if (!images.length) return;
     const wrap = document.getElementById('img2pdf-preview-wrap');
@@ -782,7 +1125,13 @@ function initImg2PdfTool() {
       const doc = await PDFDocument.create();
 
       for (const img of images) {
-        const buf = await img.file.arrayBuffer();
+        let buf = await img.file.arrayBuffer();
+        
+        // Apply crop if exists
+        if (img.crop) {
+          buf = await applyCropToBuffer(img, buf);
+        }
+        
         let image;
         if (img.file.type === 'image/png') image = await doc.embedPng(buf);
         else image = await doc.embedJpg(buf);
@@ -809,6 +1158,28 @@ function initImg2PdfTool() {
     }
   });
 
+  async function applyCropToBuffer(img, originalBuf) {
+    return new Promise((resolve) => {
+      const imageEl = new Image();
+      imageEl.onload = () => {
+        const c = document.createElement('canvas');
+        const ctx = c.getContext('2d');
+        const iw = imageEl.naturalWidth;
+        const ih = imageEl.naturalHeight;
+        const crop = img.crop;
+        const sw = (crop.r - crop.l) * iw;
+        const sh = (crop.b - crop.t) * ih;
+        const sx = crop.l * iw;
+        const sy = crop.t * ih;
+        c.width = sw;
+        c.height = sh;
+        ctx.drawImage(imageEl, sx, sy, sw, sh, 0, 0, sw, sh);
+        c.toBlob((blob) => resolve(blob.arrayBuffer()), img.file.type, 0.95);
+      };
+      imageEl.src = URL.createObjectURL(new Blob([originalBuf], { type: img.file.type }));
+    });
+  }
+
   /* Export */
   document.getElementById('img2pdf-start').addEventListener('click', async () => {
     if (!images.length) return;
@@ -822,7 +1193,13 @@ function initImg2PdfTool() {
       const doc = await PDFDocument.create();
 
       for (const img of images) {
-        const buf = await img.file.arrayBuffer();
+        let buf = await img.file.arrayBuffer();
+        
+        // Apply crop if exists
+        if (img.crop) {
+          buf = await applyCropToBuffer(img, buf);
+        }
+        
         let image;
         if (img.file.type === 'image/png') image = await doc.embedPng(buf);
         else image = await doc.embedJpg(buf);
@@ -855,9 +1232,6 @@ function initImg2PdfTool() {
   });
 }
 
-/* ===========================================================
-   COMPRESS PDF
-   =========================================================== */
 function initCompressTool() {
   let pdfFile = null;
   let pdfData = null;

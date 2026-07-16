@@ -908,3 +908,150 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ===========================================================
+   Enhanced Thumbnails - Bigger & Higher Quality
+   =========================================================== */
+.page-thumb-grid {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  gap: 14px !important;
+}
+.merge-pdf-card-body .page-thumb-grid {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)) !important;
+  gap: 12px !important;
+}
+.page-thumb-item {
+  border-radius: var(--radius-m) !important;
+  border-width: 2px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  transition: all 200ms ease;
+}
+.page-thumb-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+}
+.page-thumb-item canvas,
+.page-thumb-item img {
+  border-radius: 0;
+}
+.page-thumb-label {
+  font-size: 11px;
+  padding: 4px 6px;
+  background: rgba(0,0,0,0.7);
+}
+.page-thumb-check {
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+}
+
+/* ---- Filter Buttons ---- */
+.filter-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-alt);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.filter-btn:hover {
+  border-color: var(--gold);
+  color: var(--heading);
+}
+.filter-btn.active {
+  border-color: var(--gold);
+  background: rgba(201,168,76,0.12);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+/* ---- Large Image Preview Area ---- */
+.img-preview-area {
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+.img-preview-container {
+  position: relative;
+  width: 100%;
+  max-height: 500px;
+  overflow: hidden;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--border);
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.img-preview-image {
+  max-width: 100%;
+  max-height: 500px;
+  display: block;
+  object-fit: contain;
+}
+.img-preview-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+/* ---- Crop Overlay ---- */
+.crop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+}
+.crop-frame {
+  position: absolute;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+  cursor: move;
+  touch-action: none;
+}
+.crop-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: var(--gold);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  z-index: 11;
+}
+.crop-handle-nw { top: -7px; left: -7px; cursor: nw-resize; }
+.crop-handle-ne { top: -7px; right: -7px; cursor: ne-resize; }
+.crop-handle-sw { bottom: -7px; left: -7px; cursor: sw-resize; }
+.crop-handle-se { bottom: -7px; right: -7px; cursor: se-resize; }
+.crop-handle-n { top: -7px; left: 50%; margin-left: -7px; cursor: n-resize; }
+.crop-handle-s { bottom: -7px; left: 50%; margin-left: -7px; cursor: s-resize; }
+.crop-handle-w { top: 50%; left: -7px; margin-top: -7px; cursor: w-resize; }
+.crop-handle-e { top: 50%; right: -7px; margin-top: -7px; cursor: e-resize; }
+
+@media (max-width: 600px) {
+  .page-thumb-grid {
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)) !important;
+    gap: 10px !important;
+  }
+  .merge-pdf-card-body .page-thumb-grid {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)) !important;
+  }
+  .img-preview-container {
+    max-height: 300px;
+  }
+  .filter-btns {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
