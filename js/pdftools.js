@@ -153,8 +153,8 @@ function makePageItem(pdfIndex, pageNum, rotation = 0, label = null) {
 }
 
 /* Render a page thumbnail grid */
-function renderPageGrid(containerId, pages, options = {}) {
-  const el = document.getElementById(containerId);
+function renderPageGrid(container, pages, options = {}) {
+  const el = typeof container === 'string' ? document.getElementById(container) : container;
   if (!el) return;
   const {
     onSelect, onRotateCW, onRotateCCW, onDelete,
@@ -396,18 +396,11 @@ function initSplitTool() {
     const all = allPages();
     if (!all.length) return;
     const mode = document.querySelector('input[name="split-export-mode"]:checked').value;
-    const rangeInp = document.getElementById('split-range-input').value;
     const outName = document.getElementById('split-output-name').value.trim();
     const startBtn = document.getElementById('split-start');
     startBtn.disabled = true;
 
-    let pagesToExport = all;
-    if (rangeInp.trim()) {
-      const parsed = parseRange(rangeInp, all.length);
-      if (!parsed) { toast('Invalid page range', 'error'); startBtn.disabled = false; return; }
-      // Collect original page objects by index
-      pagesToExport = parsed.map(i => all[i-1]);
-    }
+    const pagesToExport = all;
 
     try {
       await pdflib();

@@ -793,18 +793,20 @@
 .pdf-footer {
   background: #0c2d52;
   border-top: 1px solid rgba(255,255,255,0.06);
-  padding: 24px 20px;
+  padding: 20px 20px;
 }
 .pdf-footer-inner {
   max-width: 1200px;
   margin: 0 auto;
+}
+.pdf-footer-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: center;
+  gap: 16px;
   flex-wrap: wrap;
 }
-.pdf-footer-brand {
+.pdf-footer-logo {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -812,10 +814,17 @@
   font-weight: 600;
   color: rgba(255,255,255,0.8);
 }
-.pdf-footer-note {
+.pdf-footer-logo img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+.pdf-footer-tagline {
   font-size: 11px;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.35);
   margin: 0;
+  letter-spacing: 0.02em;
 }
 
 /* ---- Toast ---- */
@@ -894,9 +903,10 @@
   .img-filter-section {
     flex-direction: column;
   }
-  .pdf-footer-inner {
+  .pdf-footer-content {
     flex-direction: column;
     text-align: center;
+    gap: 8px;
   }
   .premium-back-btn {
     padding: 8px 14px !important;

@@ -133,11 +133,13 @@
 <!-- ===================== FOOTER ===================== -->
 <footer class="pdf-footer">
   <div class="pdf-footer-inner">
-    <div class="pdf-footer-brand">
-      <img src="assets/logo.png" alt="IST" style="height:24px;width:24px;border-radius:50%;">
-      <span>IST Trust Zone — PDF Tools</span>
+    <div class="pdf-footer-content">
+      <div class="pdf-footer-logo">
+        <img src="assets/logo.png" alt="IST">
+        <span>IST Trust Zone — PDF Tools</span>
+      </div>
+      <p class="pdf-footer-tagline">All processing happens in your browser. Your files never leave your device.</p>
     </div>
-    <p class="pdf-footer-note">All processing happens in your browser. Your files never leave your device.</p>
   </div>
 </footer>
 
@@ -215,10 +217,7 @@
             <label class="tool-radio"><input type="radio" name="split-export-mode" value="single"> Single PDF</label>
           </div>
         </div>
-        <div id="split-range-opts" class="tool-option-group">
-          <label class="tool-option-label">Page range (optional, e.g. 1-3,5,7-9)</label>
-          <input type="text" id="split-range-input" class="text-input" placeholder="All pages if empty">
-        </div>
+
       </div>
       <div id="split-progress" class="tool-progress hidden">
         <div class="tool-progress-bar"><div id="split-progress-fill" class="tool-progress-fill"></div></div>
