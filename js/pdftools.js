@@ -1,59 +1,46 @@
 /* ===========================================================
-   IST Trust Zone — PDF Tools Engine
-   Client-side PDF processing using pdf-lib, pdf.js & JSZip
+   IST Trust Zone — PDF Tools Engine v2
+   Client-side PDF processing with Undo/Redo, thumbnails,
+   drag-drop reorder, and advanced editing features.
    All files are processed locally — nothing leaves your device.
    =========================================================== */
 
-import { initThemeSwitch, getStoredTheme } from './theme.js';
 import { showToast } from './shared.js';
 
-/* ---- Lazy-loaded library URLs ---- */
+/* ---- Constants ---- */
 const PDFLIB_URL = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
 const PDFJS_URL   = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
 const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const JSZIP_URL   = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
 
-/* ---- Lazy load helper ---- */
-const _libraryCache = {};
+/* ---- Lazy library loader ---- */
+const _cache = {};
 function loadScript(url) {
-  if (_libraryCache[url]) return _libraryCache[url];
-  _libraryCache[url] = new Promise((resolve, reject) => {
+  if (_cache[url]) return _cache[url];
+  _cache[url] = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = url;
     s.onload = () => resolve(window);
-    s.onerror = () => reject(new Error(`Failed to load ${url}`));
+    s.onerror = () => reject(Error('Failed to load ' + url));
     document.head.appendChild(s);
   });
-  return _libraryCache[url];
+  return _cache[url];
 }
-
 let _pdfjsReady = false;
-async function ensurePDFJS() {
-  if (_pdfjsReady) return;
-  await loadScript(PDFJS_URL);
-  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
-  _pdfjsReady = true;
-}
-
-async function ensurePDFLib() {
-  await loadScript(PDFLIB_URL);
-}
-
-async function ensureJSZip() {
-  await loadScript(JSZIP_URL);
-}
+async function pdfjs() { if (!_pdfjsReady) { await loadScript(PDFJS_URL); window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL; _pdfjsReady = true; } }
+async function pdflib() { await loadScript(PDFLIB_URL); }
+async function jszip() { await loadScript(JSZIP_URL); }
 
 /* ---- Helpers ---- */
-function formatBytes(bytes) {
-  if (!bytes && bytes !== 0) return '0 B';
-  if (bytes < 1024) return bytes + ' B';
-  const u = ['KB','MB','GB'];
-  let v = bytes / 1024, i = 0;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+function fmtBytes(b) {
+  if (!b && b !== 0) return '0 B';
+  if (b < 1024) return b + ' B';
+  const u = ['KB','MB','GB']; let v = b / 1024, i = 0;
+  while (v >= 1024 && i < u.length-1) { v /= 1024; i++; }
   return (v < 10 ? v.toFixed(1) : v.toFixed(0)) + ' ' + u[i];
 }
 
-function downloadBlob(blob, name) {
+function dlBlob(blob, name) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
@@ -63,1169 +50,1270 @@ function downloadBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-function parsePageRange(input, totalPages) {
-  const pages = new Set();
+function parseRange(input, total) {
   if (!input || !input.trim()) return null;
-  const parts = input.split(',').map(s => s.trim());
-  for (const part of parts) {
+  const s = new Set();
+  for (const part of input.split(',').map(s => s.trim())) {
     const m = part.match(/^(\d+)(?:-(\d+))?$/);
     if (!m) return null;
-    const start = parseInt(m[1], 10);
-    const end = m[2] ? parseInt(m[2], 10) : start;
-    if (start < 1 || end > totalPages || start > end) return null;
-    for (let i = start; i <= end; i++) pages.add(i);
+    const st = parseInt(m[1],10), en = m[2] ? parseInt(m[2],10) : st;
+    if (st < 1 || en > total || st > en) return null;
+    for (let i = st; i <= en; i++) s.add(i);
   }
-  return pages.size ? [...pages].sort((a,b) => a-b) : null;
+  return s.size ? [...s].sort((a,b)=>a-b) : null;
 }
 
-/* ---- Toast ---- */
-function toast(msg, type = '') {
-  showToast(msg, type);
+function toast(msg, type = '') { showToast(msg, type); }
+
+function defaultFilename(original, suffix = '') {
+  const base = original.replace(/\.pdf$/i, '').replace(/[^a-zA-Z0-9_\-]/g, '_');
+  return `IstServices_${base}${suffix}`;
 }
 
-/* ---- Dropzone Setup ---- */
-function setupDropzone(dropzoneId, inputId, onChange, acceptMultiple = false) {
-  const dz = document.getElementById(dropzoneId);
-  const inp = document.getElementById(inputId);
-  if (!dz || !inp) return;
-
-  dz.addEventListener('click', (e) => {
-    if (e.target === inp) return;
-    inp.click();
-  });
-
-  inp.addEventListener('change', () => {
-    if (onChange) onChange(Array.from(inp.files));
-  });
-
-  dz.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dz.classList.add('drag-over');
-  });
-  dz.addEventListener('dragleave', () => {
-    dz.classList.remove('drag-over');
-  });
-  dz.addEventListener('drop', (e) => {
-    e.preventDefault();
-    dz.classList.remove('drag-over');
-    const files = Array.from(e.dataTransfer.files);
-    if (!acceptMultiple && files.length > 1) {
-      toast('Please drop only one file', 'error');
-      return;
-    }
-    if (onChange) onChange(files);
-  });
+/* ===========================================================
+   UndoRedoManager
+   =========================================================== */
+class UndoRedoManager {
+  constructor(maxSteps = 50) {
+    this.stack = [];
+    this.idx = -1;
+    this.max = maxSteps;
+    this.undoBtn = null;
+    this.redoBtn = null;
+    this.onChange = null;
+  }
+  bind(undoId, redoId) {
+    this.undoBtn = document.getElementById(undoId);
+    this.redoBtn = document.getElementById(redoId);
+    if (this.undoBtn) this.undoBtn.addEventListener('click', () => this.undo());
+    if (this.redoBtn) this.redoBtn.addEventListener('click', () => this.redo());
+    this._sync();
+  }
+  push(state) {
+    this.stack = this.stack.slice(0, this.idx + 1);
+    this.stack.push(JSON.parse(JSON.stringify(state)));
+    if (this.stack.length > this.max) this.stack.shift();
+    this.idx = this.stack.length - 1;
+    this._sync();
+  }
+  undo() {
+    if (this.idx <= 0) return;
+    this.idx--;
+    this._restore();
+  }
+  redo() {
+    if (this.idx >= this.stack.length - 1) return;
+    this.idx++;
+    this._restore();
+  }
+  _restore() {
+    if (this.onChange) this.onChange(JSON.parse(JSON.stringify(this.stack[this.idx])));
+    this._sync();
+  }
+  canUndo() { return this.idx > 0; }
+  canRedo() { return this.idx < this.stack.length - 1; }
+  current() { return this.idx >= 0 ? JSON.parse(JSON.stringify(this.stack[this.idx])) : null; }
+  _sync() {
+    if (this.undoBtn) this.undoBtn.disabled = !this.canUndo();
+    if (this.redoBtn) this.redoBtn.disabled = !this.canRedo();
+  }
+  reset() {
+    this.stack = [];
+    this.idx = -1;
+    this._sync();
+  }
 }
 
-function renderFileList(containerId, files) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  container.innerHTML = files.map((f, i) => `
-    <div class="tool-file-item" data-index="${i}">
-      <span class="file-name" title="${f.name}">${f.name}</span>
-      <span class="file-size">${formatBytes(f.size)}</span>
-      <button class="file-remove" data-index="${i}" aria-label="Remove file">
-        <svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-      </button>
+/* ===========================================================
+   Thumbnail / Page Helpers
+   =========================================================== */
+let _thumbCache = {};
+
+async function renderThumbnail(pdfData, pageNum, scale = 0.3) {
+  const key = pdfData + '_' + pageNum + '_' + scale;
+  if (_thumbCache[key]) return _thumbCache[key];
+  await pdfjs();
+  const pdf = await window.pdfjsLib.getDocument({ data: pdfData.slice(0) }).promise;
+  const pg = await pdf.getPage(pageNum);
+  const vp = pg.getViewport({ scale });
+  const c = document.createElement('canvas');
+  c.width = vp.width;
+  c.height = vp.height;
+  await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+  const dataUrl = c.toDataURL('image/jpeg', 0.85);
+  _thumbCache[key] = dataUrl;
+  return dataUrl;
+}
+
+function clearThumbCache() { _thumbCache = {}; }
+
+/* Create a page item descriptor for a single page */
+function makePageItem(pdfIndex, pageNum, rotation = 0, label = null) {
+  return { pdfIndex, pageNum, rotation, label: label || String(pageNum), thumbnail: null, selected: false };
+}
+
+/* Render a page thumbnail grid */
+function renderPageGrid(containerId, pages, options = {}) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const {
+    onSelect, onRotateCW, onRotateCCW, onDelete,
+    onDragStart, onDragOver, onDrop, onDragEnd,
+    showCheck = true, showActions = true, compact = false
+  } = options;
+
+  const cls = compact ? 'page-thumb-item compact' : 'page-thumb-item';
+  el.innerHTML = pages.map((p, i) => `
+    <div class="${cls}${p.selected ? ' selected' : ''}" data-idx="${i}" draggable="true">
+      ${showCheck ? `<div class="page-thumb-check">${p.selected ? '✓' : ''}</div>` : ''}
+      ${showActions ? `
+      <div class="page-thumb-actions">
+        <button class="page-thumb-action rot-cw" data-idx="${i}" title="Rotate CW">↻</button>
+        <button class="page-thumb-action rot-ccw" data-idx="${i}" title="Rotate CCW">↺</button>
+        <button class="page-thumb-action del" data-idx="${i}" title="Delete">✕</button>
+      </div>` : ''}
+      ${p.thumbnail ? `<img src="${p.thumbnail}" alt="Page ${p.pageNum}" loading="lazy">` : '<div style="padding:20px;text-align:center;color:var(--ink-faint);font-size:11px;">Loading...</div>'}
+      <div class="page-thumb-label">${p.label || p.pageNum}${p.rotation ? ' ('+p.rotation+'°)' : ''}</div>
     </div>
   `).join('');
-  container.querySelectorAll('.file-remove').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const idx = parseInt(e.currentTarget.dataset.index, 10);
-      files.splice(idx, 1);
-      renderFileList(containerId, files);
+
+  /* Attach events */
+  el.querySelectorAll('.page-thumb-item').forEach(item => {
+    const idx = parseInt(item.dataset.idx, 10);
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.page-thumb-actions')) return;
+      if (onSelect) onSelect(idx);
     });
+    item.addEventListener('dragstart', (e) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(idx));
+      item.classList.add('dragging');
+      if (onDragStart) onDragStart(idx, e);
+    });
+    item.addEventListener('dragover', (e) => { e.preventDefault(); item.classList.add('drag-over'); if (onDragOver) onDragOver(idx, e); });
+    item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      if (!isNaN(from) && from !== idx && onDrop) onDrop(from, idx);
+    });
+    item.addEventListener('dragend', () => { item.classList.remove('dragging'); if (onDragEnd) onDragEnd(); });
+  });
+
+  /* Rotate/Delete buttons */
+  el.querySelectorAll('.rot-cw').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onRotateCW) onRotateCW(parseInt(b.dataset.idx, 10)); }));
+  el.querySelectorAll('.rot-ccw').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onRotateCCW) onRotateCCW(parseInt(b.dataset.idx, 10)); }));
+  el.querySelectorAll('.del').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onDelete) onDelete(parseInt(b.dataset.idx, 10)); }));
+}
+
+/* ===========================================================
+   SPLIT PDF
+   =========================================================== */
+function initSplitTool() {
+  let pdfFiles = [];        // array of { file, data, pages: [pageItems] }
+  let undo;                 // UndoRedoManager
+  const gridId = 'split-pages-grid';
+
+  function getState() {
+    return pdfFiles.map(f => ({
+      name: f.file.name,
+      pages: f.pages.map(p => ({ pageNum: p.pageNum, rotation: p.rotation, selected: p.selected, label: p.label }))
+    }));
+  }
+  function applyState(state) {
+    pdfFiles = state.map(s => {
+      const existing = pdfFiles.find(e => e.file.name === s.name);
+      return {
+        file: existing ? existing.file : null,
+        data: existing ? existing.data : null,
+        pages: s.pages.map((p, i) => ({ ...p, thumbnail: existing && existing.pages[i] ? existing.pages[i].thumbnail : null }))
+      };
+    });
+    renderSplitGrid();
+    updateSplitUI();
+  }
+
+  function selectPage(idx) {
+    const all = allPages();
+    if (all[idx]) { all[idx].selected = !all[idx].selected; renderSplitGrid(); }
+  }
+  function rotateCW(idx) {
+    const all = allPages();
+    if (all[idx]) { all[idx].rotation = (all[idx].rotation || 0) + 90; undo.push(getState()); renderSplitGrid(); }
+  }
+  function rotateCCW(idx) {
+    const all = allPages();
+    if (all[idx]) { all[idx].rotation = (all[idx].rotation || 0) - 90; undo.push(getState()); renderSplitGrid(); }
+  }
+  function deletePage(idx) {
+    const all = allPages();
+    if (all[idx]) {
+      // Find which pdfFile this belongs to
+      let count = 0;
+      for (const f of pdfFiles) {
+        if (idx < count + f.pages.length) {
+          f.pages.splice(idx - count, 1);
+          undo.push(getState()); renderSplitGrid(); updateSplitUI(); return;
+        }
+        count += f.pages.length;
+      }
+    }
+  }
+
+  function allPages() { return pdfFiles.reduce((a, f) => a.concat(f.pages), []); }
+  function allSelected() { return allPages().filter(p => p.selected); }
+
+  function renderSplitGrid() {
+    const all = allPages();
+    renderPageGrid(gridId, all, {
+      onSelect: selectPage, onRotateCW: rotateCW, onRotateCCW: rotateCCW, onDelete: deletePage,
+      onDrop(from, to) {
+        const all = allPages();
+        if (from < 0 || from >= all.length || to < 0 || to >= all.length) return;
+        // Move page from one position to another, potentially across PDFs
+        const srcPage = all[from];
+        let srcPdf = null, srcIdx = -1, count = 0;
+        for (const f of pdfFiles) {
+          if (from < count + f.pages.length) { srcPdf = f; srcIdx = from - count; break; }
+          count += f.pages.length;
+        }
+        if (!srcPdf) return;
+        const [moved] = srcPdf.pages.splice(srcIdx, 1);
+        // Insert at target position
+        count = 0;
+        for (const f of pdfFiles) {
+          if (to <= count + f.pages.length) {
+            f.pages.splice(to - count, 0, moved);
+            break;
+          }
+          count += f.pages.length;
+        }
+        undo.push(getState()); renderSplitGrid(); updateSplitUI();
+      }
+    });
+  }
+
+  function updateSplitUI() {
+    const all = allPages();
+    const cnt = document.getElementById('split-page-count');
+    if (cnt) cnt.textContent = all.length + ' pages';
+    const sel = allSelected().length;
+    const startBtn = document.getElementById('split-start');
+    if (startBtn) startBtn.disabled = all.length === 0;
+    const toolbar = document.getElementById('split-toolbar');
+    if (toolbar) toolbar.classList.toggle('hidden', all.length === 0);
+    const exportOpts = document.getElementById('split-export-opts');
+    if (exportOpts) exportOpts.classList.toggle('hidden', all.length === 0);
+    const undoBar = document.getElementById('split-undo-bar');
+    if (undoBar) undoBar.classList.toggle('hidden', all.length === 0);
+  }
+
+  /* Dropzone setup */
+  const dz = document.getElementById('split-dropzone');
+  const inp = document.getElementById('split-file-input');
+  dz.addEventListener('click', () => inp.click());
+  inp.addEventListener('change', () => handleSplitFiles(Array.from(inp.files)));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleSplitFiles(Array.from(e.dataTransfer.files)); });
+
+  async function handleSplitFiles(files) {
+    const pdfFiles2 = files.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    if (!pdfFiles2.length) { toast('Please select PDF files', 'error'); return; }
+
+    for (const file of pdfFiles2) {
+      const data = await file.arrayBuffer();
+      await pdflib();
+      const doc = await PDFLib.PDFDocument.load(data);
+      const total = doc.getPageCount();
+      const pdfEntry = { file, data, pages: [] };
+      for (let i = 0; i < total; i++) {
+        pdfEntry.pages.push(makePageItem(pdfFiles.length, i + 1, 0, `Page ${i+1}`));
+      }
+      // Generate thumbnails
+      toast(`Loading ${total} pages from ${file.name}...`);
+      for (let i = 0; i < total; i++) {
+        pdfEntry.pages[i].thumbnail = await renderThumbnail(data, i + 1, 0.25);
+      }
+      pdfFiles.push(pdfEntry);
+    }
+    undo.reset();
+    undo.push(getState());
+    renderSplitGrid();
+    updateSplitUI();
+    toast(`Loaded ${pdfFiles2.length} PDF(s)`, 'success');
+  }
+
+  /* Init undo */
+  undo = new UndoRedoManager();
+  undo.bind('split-undo', 'split-redo');
+  undo.onChange = (state) => applyState(state);
+
+  /* Export */
+  document.getElementById('split-start').addEventListener('click', async () => {
+    const all = allPages();
+    if (!all.length) return;
+    const mode = document.querySelector('input[name="split-export-mode"]:checked').value;
+    const rangeInp = document.getElementById('split-range-input').value;
+    const outName = document.getElementById('split-output-name').value.trim();
+    const startBtn = document.getElementById('split-start');
+    startBtn.disabled = true;
+
+    let pagesToExport = all;
+    if (rangeInp.trim()) {
+      const parsed = parseRange(rangeInp, all.length);
+      if (!parsed) { toast('Invalid page range', 'error'); startBtn.disabled = false; return; }
+      // Collect original page objects by index
+      pagesToExport = parsed.map(i => all[i-1]);
+    }
+
+    try {
+      await pdflib();
+      const { PDFDocument } = PDFLib;
+
+      if (mode === 'single') {
+        const newDoc = await PDFDocument.create();
+        for (const p of pagesToExport) {
+          // Find which pdfFile has the original data
+          let srcData = null;
+          for (const f of pdfFiles) {
+            if (f.pages.includes(p)) { srcData = f.data; break; }
+          }
+          if (!srcData) continue;
+          const src = await PDFDocument.load(srcData);
+          const [cp] = await newDoc.copyPages(src, [p.pageNum - 1]);
+          if (p.rotation) cp.setRotation(PDFLib.degrees(cp.getRotation().angle + p.rotation));
+          newDoc.addPage(cp);
+        }
+        const bytes = await newDoc.save();
+        const name = outName || defaultFilename(pdfFiles[0].file.name, '.pdf');
+        dlBlob(new Blob([bytes], {type:'application/pdf'}), name);
+        toast('PDF exported successfully!', 'success');
+      } else {
+        // ZIP
+        await jszip();
+        const JSZip = window.JSZip;
+        const zip = new JSZip();
+        for (let i = 0; i < pagesToExport.length; i++) {
+          const p = pagesToExport[i];
+          let srcData = null;
+          for (const f of pdfFiles) {
+            if (f.pages.includes(p)) { srcData = f.data; break; }
+          }
+          if (!srcData) continue;
+          const src = await PDFDocument.load(srcData);
+          const nd = await PDFDocument.create();
+          const [cp] = await nd.copyPages(src, [p.pageNum - 1]);
+          if (p.rotation) cp.setRotation(PDFLib.degrees(cp.getRotation().angle + p.rotation));
+          nd.addPage(cp);
+          zip.file(`page-${p.pageNum}.pdf`, await nd.save());
+        }
+        const name = outName || defaultFilename(pdfFiles[0].file.name, '-split.zip');
+        const blob = await zip.generateAsync({type:'blob'});
+        dlBlob(blob, name);
+        toast('PDF pages exported as ZIP!', 'success');
+      }
+      resetTool('split');
+    } catch (err) {
+      toast('Export failed: ' + err.message, 'error');
+      console.error(err);
+    } finally {
+      startBtn.disabled = false;
+    }
   });
 }
 
 /* ===========================================================
-   TOOL: Merge PDF
+   MERGE PDF
    =========================================================== */
 function initMergeTool() {
-  const files = [];
-  const input = document.getElementById('merge-file-input');
-  const list = document.getElementById('merge-file-list');
-  const startBtn = document.getElementById('merge-start');
-  const progress = document.getElementById('merge-progress');
-  const progressFill = document.getElementById('merge-progress-fill');
-  const progressText = document.getElementById('merge-progress-text');
+  let pdfFiles = []; // { file, data, pages: [pageItems], expanded: bool }
+  let undo;
 
-  setupDropzone('merge-dropzone', 'merge-file-input', (newFiles) => {
-    for (const f of newFiles) {
-      if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
-        files.push(f);
+  function getState() {
+    return pdfFiles.map(f => ({
+      name: f.file.name,
+      pages: f.pages.map(p => ({ pageNum: p.pageNum, rotation: p.rotation, selected: p.selected, label: p.label })),
+      expanded: f.expanded
+    }));
+  }
+  function applyState(state) {
+    pdfFiles = state.map(s => {
+      const ex = pdfFiles.find(e => e.file.name === s.name);
+      return {
+        file: ex ? ex.file : null,
+        data: ex ? ex.data : null,
+        expanded: s.expanded,
+        pages: s.pages.map((p, i) => ({
+          ...p, thumbnail: ex && ex.pages[i] ? ex.pages[i].thumbnail : null
+        }))
+      };
+    });
+    renderMergeCards();
+    updateMergeUI();
+  }
+
+  function toggleCard(idx) {
+    const f = pdfFiles[idx];
+    if (f) { f.expanded = !f.expanded; renderMergeCards(); }
+  }
+
+  function removePdf(idx) {
+    pdfFiles.splice(idx, 1);
+    undo.push(getState());
+    renderMergeCards();
+    updateMergeUI();
+  }
+
+  function allPages() { return pdfFiles.reduce((a, f) => a.concat(f.pages.map(p => ({...p, _pdfIdx: pdfFiles.indexOf(f)}))), []); }
+
+  function renderMergeCards() {
+    const el = document.getElementById('merge-pdf-cards');
+    if (!el) return;
+    el.innerHTML = pdfFiles.map((f, fi) => `
+      <div class="merge-pdf-card" data-pdf="${fi}">
+        <div class="merge-pdf-card-header${f.expanded ? ' expanded' : ''}">
+          <svg class="card-expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          <span class="card-filename" title="${f.file.name}">${f.file.name}</span>
+          <span class="card-pagecount">${f.pages.length} pages</span>
+          <button class="card-remove" data-pdf="${fi}" title="Remove PDF">✕</button>
+        </div>
+        <div class="merge-pdf-card-body${f.expanded ? ' open' : ''}" data-body="${fi}">
+          <div class="page-thumb-grid" data-pdf-grid="${fi}"></div>
+        </div>
+      </div>
+    `).join('');
+
+    /* Events */
+    el.querySelectorAll('.merge-pdf-card-header').forEach(h => {
+      h.addEventListener('click', (e) => {
+        if (e.target.closest('.card-remove')) return;
+        const fi = parseInt(h.closest('.merge-pdf-card').dataset.pdf, 10);
+        toggleCard(fi);
+      });
+    });
+    el.querySelectorAll('.card-remove').forEach(b => {
+      b.addEventListener('click', (e) => { e.stopPropagation(); removePdf(parseInt(b.dataset.pdf, 10)); });
+    });
+
+    /* Render page grids inside expanded cards */
+    pdfFiles.forEach((f, fi) => {
+      if (!f.expanded) return;
+      const grid = el.querySelector(`[data-pdf-grid="${fi}"]`);
+      if (!grid) return;
+      renderPageGrid(grid, f.pages, {
+        compact: true, showCheck: true, showActions: true,
+        onSelect(idx) { f.pages[idx].selected = !f.pages[idx].selected; renderMergeCards(); },
+        onRotateCW(idx) { f.pages[idx].rotation = (f.pages[idx].rotation || 0) + 90; undo.push(getState()); renderMergeCards(); },
+        onRotateCCW(idx) { f.pages[idx].rotation = (f.pages[idx].rotation || 0) - 90; undo.push(getState()); renderMergeCards(); },
+        onDelete(idx) { f.pages.splice(idx, 1); if (!f.pages.length) pdfFiles.splice(fi, 1); undo.push(getState()); renderMergeCards(); updateMergeUI(); },
+        onDrop(fromIdx, toIdx) {
+          // Calculate global page positions
+          let globalPages = [];
+          pdfFiles.forEach(pf => pf.pages.forEach(p => globalPages.push({ pdf: pf, page: p })));
+          if (fromIdx < 0 || fromIdx >= globalPages.length || toIdx < 0 || toIdx >= globalPages.length) return;
+          const [moved] = globalPages.splice(fromIdx, 1);
+          const target = globalPages[toIdx];
+          if (!target) return;
+          // Remove from original PDF
+          const srcPdf = moved.pdf;
+          const srcPageIdx = srcPdf.pages.indexOf(moved.page);
+          if (srcPageIdx >= 0) srcPdf.pages.splice(srcPageIdx, 1);
+          // Insert at target PDF
+          const tgtPdf = target.pdf;
+          const tgtPageIdx = tgtPdf.pages.indexOf(target.page);
+          tgtPdf.pages.splice(tgtPageIdx >= 0 ? tgtPageIdx : tgtPdf.pages.length, 0, moved.page);
+          // Clean up empty PDFs
+          pdfFiles = pdfFiles.filter(pf => pf.pages.length > 0);
+          undo.push(getState()); renderMergeCards(); updateMergeUI();
+        }
+      }, true);
+    });
+  }
+
+  function updateMergeUI() {
+    const total = pdfFiles.reduce((a, f) => a + f.pages.length, 0);
+    const startBtn = document.getElementById('merge-start');
+    startBtn.disabled = pdfFiles.length < 2 && total < 2;
+    const undoBar = document.getElementById('merge-undo-bar');
+    if (undoBar) undoBar.classList.toggle('hidden', pdfFiles.length === 0);
+  }
+
+  /* Dropzone */
+  const dz = document.getElementById('merge-dropzone');
+  const inp = document.getElementById('merge-file-input');
+  dz.addEventListener('click', () => inp.click());
+  inp.addEventListener('change', () => handleMergeFiles(Array.from(inp.files)));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleMergeFiles(Array.from(e.dataTransfer.files)); });
+
+  async function handleMergeFiles(files) {
+    const pfs = files.filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    if (!pfs.length) { toast('Please select PDF files', 'error'); return; }
+    for (const file of pfs) {
+      const data = await file.arrayBuffer();
+      await pdflib();
+      const doc = await PDFLib.PDFDocument.load(data);
+      const total = doc.getPageCount();
+      const entry = { file, data, pages: [], expanded: false };
+      for (let i = 0; i < total; i++) {
+        entry.pages.push(makePageItem(null, i + 1, 0, `Page ${i+1}`));
       }
+      // Generate thumbnails
+      toast(`Loading ${file.name}...`);
+      for (let i = 0; i < total; i++) {
+        entry.pages[i].thumbnail = await renderThumbnail(data, i + 1, 0.2);
+      }
+      pdfFiles.push(entry);
     }
-    renderFileList('merge-file-list', files);
-    startBtn.disabled = files.length < 2;
-  }, true);
+    undo.reset();
+    undo.push(getState());
+    renderMergeCards();
+    updateMergeUI();
+    toast(`Loaded ${pfs.length} PDF(s)`, 'success');
+  }
 
-  startBtn.addEventListener('click', async () => {
-    if (files.length < 2) { toast('Select at least 2 PDF files', 'error'); return; }
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-    progressText.textContent = 'Loading libraries...';
+  undo = new UndoRedoManager();
+  undo.bind('merge-undo', 'merge-redo');
+  undo.onChange = (state) => applyState(state);
+
+  /* Export */
+  document.getElementById('merge-start').addEventListener('click', async () => {
+    const all = allPages();
+    if (all.length < 2) { toast('Need at least 2 pages to merge', 'error'); return; }
+    const outName = document.getElementById('merge-output-name').value.trim();
+    document.getElementById('merge-start').disabled = true;
 
     try {
-      await ensurePDFLib();
+      await pdflib();
       const { PDFDocument } = PDFLib;
+      const newDoc = await PDFDocument.create();
 
-      progressText.textContent = 'Merging PDFs...';
-      const mergedPdf = await PDFDocument.create();
-
-      for (let i = 0; i < files.length; i++) {
-        const buf = await files[i].arrayBuffer();
-        const doc = await PDFDocument.load(buf);
-        const idx = await mergedPdf.copyPages(doc, doc.getPageIndices());
-        idx.forEach(p => mergedPdf.addPage(p));
-        progressFill.style.width = `${((i + 1) / files.length) * 90}%`;
-        progressText.textContent = `Merging page ${i + 1} of ${files.length}...`;
+      for (const p of all) {
+        const f = pdfFiles[p._pdfIdx];
+        if (!f || !f.data) continue;
+        const src = await PDFDocument.load(f.data);
+        const [cp] = await newDoc.copyPages(src, [p.pageNum - 1]);
+        if (p.rotation) cp.setRotation(PDFLib.degrees(cp.getRotation().angle + p.rotation));
+        newDoc.addPage(cp);
       }
 
-      const pdfBytes = await mergedPdf.save();
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      downloadBlob(blob, 'merged.pdf');
-
+      const bytes = await newDoc.save();
+      const name = outName || defaultFilename(pdfFiles[0]?.file?.name || 'merged', '.pdf');
+      dlBlob(new Blob([bytes], {type:'application/pdf'}), name);
       toast('PDFs merged successfully!', 'success');
       resetTool('merge');
     } catch (err) {
       toast('Merge failed: ' + err.message, 'error');
-      console.error('Merge error:', err);
+      console.error(err);
     } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
+      document.getElementById('merge-start').disabled = false;
     }
   });
 }
 
 /* ===========================================================
-   TOOL: Split PDF
+   IMAGE TO PDF
    =========================================================== */
-function initSplitTool() {
-  let pdfFile = null;
-  const input = document.getElementById('split-file-input');
-  const startBtn = document.getElementById('split-start');
-  const options = document.getElementById('split-options');
-  const progress = document.getElementById('split-progress');
-  const progressFill = document.getElementById('split-progress-fill');
-  const progressText = document.getElementById('split-progress-text');
-  const rangeOptions = document.getElementById('split-range-options');
-  const rangeInput = document.getElementById('split-range-input');
-  const pagesPreview = document.getElementById('split-pages-preview');
+function initImg2PdfTool() {
+  let images = []; // { file, data, dataUrl, rotation, selected, brightness, contrast }
+  let undo;
+  const gridId = 'img2pdf-grid';
 
-  setupDropzone('split-dropzone', 'split-file-input', (newFiles) => {
-    if (newFiles.length) {
-      pdfFile = newFiles[0];
-      options.classList.remove('hidden');
-      startBtn.disabled = false;
+  function getState() {
+    return images.map(img => ({
+      name: img.file.name,
+      rotation: img.rotation,
+      selected: img.selected,
+      brightness: img.brightness,
+      contrast: img.contrast
+    }));
+  }
+  function applyState(state) {
+    images = state.map(s => {
+      const ex = images.find(e => e.file.name === s.name);
+      return { ...ex, ...s };
+    });
+    renderImageGrid();
+    updateImgUI();
+  }
+
+  function renderImageGrid() {
+    const el = document.getElementById(gridId);
+    if (!el) return;
+    el.innerHTML = images.map((img, i) => `
+      <div class="img-grid-item${img.selected ? ' selected' : ''}" data-idx="${i}" draggable="true">
+        <div class="img-check">${img.selected ? '✓' : ''}</div>
+        <img src="${img.dataUrl}" alt="${img.file.name}" style="${img.rotation ? 'transform:rotate('+img.rotation+'deg)' : ''}${img.brightness !== undefined ? ';filter:brightness('+(img.brightness/100)+') contrast('+(img.contrast/100)+')' : ''}">
+        <div class="img-label">${img.file.name.substring(0, 15)}${img.rotation ? ' ('+img.rotation+'°)' : ''}</div>
+      </div>
+    `).join('');
+
+    el.querySelectorAll('.img-grid-item').forEach(item => {
+      const idx = parseInt(item.dataset.idx, 10);
+      item.addEventListener('click', () => {
+        images[idx].selected = !images[idx].selected;
+        renderImageGrid();
+      });
+      item.addEventListener('dragstart', (e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(idx));
+        item.classList.add('dragging');
+      });
+      item.addEventListener('dragover', (e) => { e.preventDefault(); item.classList.add('drag-over'); });
+      item.addEventListener('dragleave', () => item.classList.remove('drag-over'));
+      item.addEventListener('drop', (e) => {
+        e.preventDefault(); item.classList.remove('drag-over');
+        const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
+        if (!isNaN(from) && from !== idx) {
+          const [m] = images.splice(from, 1);
+          images.splice(idx, 0, m);
+          undo.push(getState()); renderImageGrid();
+        }
+      });
+      item.addEventListener('dragend', () => item.classList.remove('dragging'));
+    });
+  }
+
+  function updateImgUI() {
+    const tb = document.getElementById('img2pdf-toolbar');
+    if (tb) tb.classList.toggle('hidden', images.length === 0);
+    const ub = document.getElementById('img2pdf-undo-bar');
+    if (ub) ub.classList.toggle('hidden', images.length === 0);
+    const opts = document.getElementById('img2pdf-options');
+    if (opts) opts.classList.toggle('hidden', images.length === 0);
+    const cnt = document.getElementById('img2pdf-count');
+    if (cnt) cnt.textContent = images.length + ' images';
+    const btn = document.getElementById('img2pdf-start');
+    btn.disabled = images.length === 0;
+  }
+
+  /* Dropzone */
+  const dz = document.getElementById('img2pdf-dropzone');
+  const inp = document.getElementById('img2pdf-file-input');
+  dz.addEventListener('click', () => inp.click());
+  inp.addEventListener('change', () => handleImgFiles(Array.from(inp.files)));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleImgFiles(Array.from(e.dataTransfer.files)); });
+
+  async function handleImgFiles(files) {
+    const imgs = files.filter(f => f.type.startsWith('image/'));
+    if (!imgs.length) { toast('Please select image files', 'error'); return; }
+    for (const file of imgs) {
+      const data = await file.arrayBuffer();
+      const dataUrl = URL.createObjectURL(file);
+      images.push({
+        file, data, dataUrl,
+        rotation: 0, selected: false,
+        brightness: 100, contrast: 100
+      });
+    }
+    undo.reset();
+    undo.push(getState());
+    renderImageGrid();
+    updateImgUI();
+    toast(`Loaded ${imgs.length} images`, 'success');
+  }
+
+  /* Undo/Redo */
+  undo = new UndoRedoManager();
+  undo.bind('img2pdf-undo', 'img2pdf-redo');
+  undo.onChange = (state) => applyState(state);
+
+  /* Toolbar actions */
+  document.querySelector('.img-rotate-cw-all')?.addEventListener('click', () => {
+    if (images.length) {
+      const sel = images.filter(i => i.selected);
+      (sel.length ? sel : images).forEach(i => { i.rotation = (i.rotation || 0) + 90; });
+      undo.push(getState()); renderImageGrid();
     }
   });
-
-  document.querySelectorAll('input[name="split-mode"]').forEach(r => {
-    r.addEventListener('change', () => {
-      rangeOptions.classList.toggle('hidden', r.value !== 'range');
-    });
+  document.querySelector('.img-rotate-ccw-all')?.addEventListener('click', () => {
+    if (images.length) {
+      const sel = images.filter(i => i.selected);
+      (sel.length ? sel : images).forEach(i => { i.rotation = (i.rotation || 0) - 90; });
+      undo.push(getState()); renderImageGrid();
+    }
+  });
+  document.querySelector('.img-delete-selected')?.addEventListener('click', () => {
+    images = images.filter(i => !i.selected);
+    undo.push(getState()); renderImageGrid(); updateImgUI();
   });
 
-  startBtn.addEventListener('click', async () => {
-    if (!pdfFile) { toast('Please select a PDF file', 'error'); return; }
-    const mode = document.querySelector('input[name="split-mode"]:checked').value;
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
+  /* Filters */
+  const brInput = document.getElementById('img-filter-brightness');
+  const conInput = document.getElementById('img-filter-contrast');
+  const grayBtn = document.getElementById('img-filter-grayscale');
+
+  function applyFiltersToSelected() {
+    const sel = images.filter(i => i.selected);
+    if (!sel.length) { toast('Select images to apply filters', 'error'); return; }
+    sel.forEach(i => {
+      i.brightness = parseInt(brInput.value, 10);
+      i.contrast = parseInt(conInput.value, 10);
+    });
+    renderImageGrid();
+  }
+
+  brInput?.addEventListener('change', applyFiltersToSelected);
+  conInput?.addEventListener('change', applyFiltersToSelected);
+  grayBtn?.addEventListener('click', () => {
+    const sel = images.filter(i => i.selected);
+    if (!sel.length) { toast('Select images to apply grayscale', 'error'); return; }
+    // Set contrast to 0 (effectively grayscale through CSS filter)
+    sel.forEach(i => { i.contrast = 0; });
+    renderImageGrid();
+  });
+
+  /* Preview */
+  document.getElementById('img2pdf-preview-btn')?.addEventListener('click', async () => {
+    if (!images.length) return;
+    const wrap = document.getElementById('img2pdf-preview-wrap');
+    const frame = document.getElementById('img2pdf-preview-frame');
+    const size = document.getElementById('img2pdf-pagesize').value;
+    wrap.classList.remove('hidden');
 
     try {
-      await ensurePDFLib();
+      await pdflib();
       const { PDFDocument } = PDFLib;
-      const buf = await pdfFile.arrayBuffer();
-      const srcDoc = await PDFDocument.load(buf);
-      const totalPages = srcDoc.getPageCount();
+      const doc = await PDFDocument.create();
 
-      let pagesToExtract;
-      if (mode === 'range') {
-        pagesToExtract = parsePageRange(rangeInput.value, totalPages);
-        if (!pagesToExtract || !pagesToExtract.length) {
-          toast('Invalid page range', 'error');
-          startBtn.disabled = false;
-          return;
-        }
-      } else {
-        pagesToExtract = Array.from({ length: totalPages }, (_, i) => i + 1);
+      for (const img of images) {
+        const buf = await img.file.arrayBuffer();
+        let image;
+        if (img.file.type === 'image/png') image = await doc.embedPng(buf);
+        else image = await doc.embedJpg(buf);
+        const { width: iw, height: ih } = image.scale(1);
+
+        let pw, ph;
+        if (size === 'A4') { pw = 595.28; ph = 841.89; }
+        else if (size === 'Letter') { pw = 612; ph = 792; }
+        else { pw = iw; ph = ih; }
+
+        const page = doc.addPage([pw, ph]);
+        if (img.rotation) page.setRotation(PDFLib.degrees(img.rotation));
+
+        const scale = Math.min(pw / iw, ph / ih) * 0.9;
+        const dw = iw * scale, dh = ih * scale;
+        page.drawImage(image, { x: (pw - dw) / 2, y: (ph - dh) / 2, width: dw, height: dh });
       }
 
-      await ensureJSZip();
-      const JSZip = window.JSZip;
-      const zip = new JSZip();
-
-      for (let i = 0; i < pagesToExtract.length; i++) {
-        const pageIdx = pagesToExtract[i] - 1;
-        const newDoc = await PDFDocument.create();
-        const [copiedPage] = await newDoc.copyPages(srcDoc, [pageIdx]);
-        newDoc.addPage(copiedPage);
-        const bytes = await newDoc.save();
-        zip.file(`page-${pagesToExtract[i]}.pdf`, bytes);
-        progressFill.style.width = `${((i + 1) / pagesToExtract.length) * 90}%`;
-        progressText.textContent = `Extracting page ${i + 1} of ${pagesToExtract.length}...`;
-      }
-
-      progressText.textContent = 'Creating ZIP...';
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      downloadBlob(zipBlob, pdfFile.name.replace('.pdf', '-split.zip'));
-      toast('PDF split successfully!', 'success');
-      resetTool('split');
+      const bytes = await doc.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      frame.src = URL.createObjectURL(blob);
     } catch (err) {
-      toast('Split failed: ' + err.message, 'error');
-      console.error('Split error:', err);
+      toast('Preview failed: ' + err.message, 'error');
+    }
+  });
+
+  /* Export */
+  document.getElementById('img2pdf-start').addEventListener('click', async () => {
+    if (!images.length) return;
+    const outName = document.getElementById('img2pdf-output-name').value.trim();
+    const size = document.getElementById('img2pdf-pagesize').value;
+    document.getElementById('img2pdf-start').disabled = true;
+
+    try {
+      await pdflib();
+      const { PDFDocument } = PDFLib;
+      const doc = await PDFDocument.create();
+
+      for (const img of images) {
+        const buf = await img.file.arrayBuffer();
+        let image;
+        if (img.file.type === 'image/png') image = await doc.embedPng(buf);
+        else image = await doc.embedJpg(buf);
+        const { width: iw, height: ih } = image.scale(1);
+
+        let pw, ph;
+        if (size === 'A4') { pw = 595.28; ph = 841.89; }
+        else if (size === 'Letter') { pw = 612; ph = 792; }
+        else { pw = iw; ph = ih; }
+
+        const page = doc.addPage([pw, ph]);
+        if (img.rotation) page.setRotation(PDFLib.degrees(img.rotation));
+
+        const scale = Math.min(pw / iw, ph / ih) * 0.9;
+        const dw = iw * scale, dh = ih * scale;
+        page.drawImage(image, { x: (pw - dw) / 2, y: (ph - dh) / 2, width: dw, height: dh });
+      }
+
+      const bytes = await doc.save();
+      const name = outName || 'IstServices.pdf';
+      dlBlob(new Blob([bytes], {type:'application/pdf'}), name);
+      toast('PDF created successfully!', 'success');
+      resetTool('img2pdf');
+    } catch (err) {
+      toast('Failed: ' + err.message, 'error');
+      console.error(err);
     } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
+      document.getElementById('img2pdf-start').disabled = false;
     }
   });
 }
 
 /* ===========================================================
-   TOOL: Compress PDF
+   COMPRESS PDF
    =========================================================== */
 function initCompressTool() {
   let pdfFile = null;
-  const input = document.getElementById('compress-file-input');
-  const startBtn = document.getElementById('compress-start');
-  const info = document.getElementById('compress-info');
-  const progress = document.getElementById('compress-progress');
-  const progressFill = document.getElementById('compress-progress-fill');
-  const progressText = document.getElementById('compress-progress-text');
-  const originalSize = document.getElementById('compress-original-size');
-  const estimatedSize = document.getElementById('compress-estimated-size');
-  const reduction = document.getElementById('compression-reduction');
+  let pdfData = null;
+  let level = 'high';
 
-  let level = 'medium';
+  const dz = document.getElementById('compress-dropzone');
+  const inp = document.getElementById('compress-file-input');
+  dz.addEventListener('click', () => inp.click());
+  inp.addEventListener('change', () => handleFile(Array.from(inp.files)));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(Array.from(e.dataTransfer.files)); });
 
-  setupDropzone('compress-dropzone', 'compress-file-input', (newFiles) => {
-    if (newFiles.length) {
-      pdfFile = newFiles[0];
-      info.classList.remove('hidden');
-      startBtn.disabled = false;
-      originalSize.textContent = formatBytes(pdfFile.size);
-      const est = { medium: 0.65, high: 0.45, extreme: 0.3 };
-      estimatedSize.textContent = formatBytes(Math.round(pdfFile.size * est[level]));
-      reduction.textContent = `${Math.round((1 - est[level]) * 100)}%`;
-    }
-  });
+  async function handleFile(files) {
+    if (!files.length) return;
+    pdfFile = files[0];
+    pdfData = await pdfFile.arrayBuffer();
+    document.getElementById('compress-info').classList.remove('hidden');
+    document.getElementById('compress-start').disabled = false;
+    document.getElementById('compress-original-size').textContent = fmtBytes(pdfFile.size);
+    updateEstimates();
+  }
+
+  function updateEstimates() {
+    const est = { high: 0.45, medium: 0.65, low: 0.85 };
+    const pct = { high: '55%', medium: '35%', low: '15%' };
+    const saved = Math.round(pdfFile.size * (1 - est[level]));
+    document.getElementById('compress-estimated-size').textContent = fmtBytes(Math.round(pdfFile.size * est[level]));
+    document.getElementById('compress-savings').textContent = '-' + fmtBytes(saved) + ' (' + pct[level] + ')';
+  }
 
   document.querySelectorAll('.compress-level-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.compress-level-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       level = btn.dataset.level;
-      if (pdfFile) {
-        const est = { medium: 0.65, high: 0.45, extreme: 0.3 };
-        estimatedSize.textContent = formatBytes(Math.round(pdfFile.size * est[level]));
-        reduction.textContent = `${Math.round((1 - est[level]) * 100)}%`;
-      }
+      if (pdfFile) updateEstimates();
     });
   });
 
-  startBtn.addEventListener('click', async () => {
-    if (!pdfFile) { toast('Please select a PDF file', 'error'); return; }
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-    progressText.textContent = 'Compressing...';
+  document.getElementById('compress-start').addEventListener('click', async () => {
+    if (!pdfFile) return;
+    document.getElementById('compress-start').disabled = true;
+    document.getElementById('compress-progress').classList.remove('hidden');
 
     try {
-      await ensurePDFLib();
+      await pdflib();
       const { PDFDocument } = PDFLib;
+      const doc = await PDFDocument.load(pdfData);
 
-      const buf = await pdfFile.arrayBuffer();
-      const doc = await PDFDocument.load(buf);
+      let opts = { useObjectStreams: true, objectsPerTick: 100 };
+      if (level === 'high') opts.objectsPerTick = 50;
+      else if (level === 'low') opts.objectsPerTick = 200;
 
-      // For compression we use object stream optimization
-      // pdf-lib doesn't support true re-compression but we can:
-      // 1. Remove unused objects by saving with objectsPerTick optimization
-      // 2. For extreme, reduce image quality via page content manipulation
-      const opts = { objectsPerTick: 100 };
-      if (level === 'extreme') {
-        opts.objectsPerTick = 50;
-      }
+      document.getElementById('compress-progress-text').textContent = 'Compressing...';
+      document.getElementById('compress-progress-fill').style.width = '60%';
 
-      progressText.textContent = 'Optimizing PDF structure...';
-      progressFill.style.width = '50%';
+      const bytes = await doc.save(opts);
+      document.getElementById('compress-progress-fill').style.width = '100%';
+      document.getElementById('compress-progress-text').textContent = 'Done!';
 
-      let pdfBytes;
-      if (level === 'extreme') {
-        // For extreme, we try to compress images by re-saving with smaller footprint
-        const pages = doc.getPages();
-        for (const page of pages) {
-          const { width, height } = page.getSize();
-          // Scale down large pages
-          if (width > 1200 || height > 1200) {
-            const scale = Math.min(1200 / width, 1200 / height);
-            page.setSize(width * scale, height * scale);
-          }
-        }
-        pdfBytes = await doc.save({ objectsPerTick: 50, useObjectStreams: true });
-      } else if (level === 'high') {
-        pdfBytes = await doc.save({ objectsPerTick: 80, useObjectStreams: true });
-      } else {
-        pdfBytes = await doc.save({ objectsPerTick: 100, useObjectStreams: true });
-      }
+      const compressedBlob = new Blob([bytes], { type: 'application/pdf' });
+      const outName = document.getElementById('compress-output-name').value.trim() || defaultFilename(pdfFile.name, '-compressed.pdf');
+      dlBlob(compressedBlob, outName);
 
-      progressFill.style.width = '90%';
-      progressText.textContent = 'Finalizing...';
-
-      const compressedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      const compSize = compressedBlob.size;
-      const saved = pdfFile.size - compSize;
-      const pct = pdfFile.size ? Math.round((saved / pdfFile.size) * 100) : 0;
-      toast(`Compressed: ${formatBytes(pdfFile.size)} → ${formatBytes(compSize)} (${pct}% reduction)`, 'success');
-
-      downloadBlob(compressedBlob, pdfFile.name.replace('.pdf', '-compressed.pdf'));
+      const ratio = pdfFile.size ? Math.round((1 - bytes.length / pdfFile.size) * 100) : 0;
+      toast(`Compressed: ${fmtBytes(pdfFile.size)} → ${fmtBytes(bytes.length)} (${ratio}% reduction)`, 'success');
       resetTool('compress');
     } catch (err) {
       toast('Compression failed: ' + err.message, 'error');
-      console.error('Compress error:', err);
     } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
+      document.getElementById('compress-start').disabled = false;
+      setTimeout(() => document.getElementById('compress-progress').classList.add('hidden'), 2000);
     }
   });
 }
 
 /* ===========================================================
-   TOOL: PDF to Image
+   PDF TO IMAGE
    =========================================================== */
 function initPdf2ImgTool() {
   let pdfFile = null;
-  const input = document.getElementById('pdf2img-file-input');
-  const startBtn = document.getElementById('pdf2img-start');
-  const options = document.getElementById('pdf2img-options');
-  const progress = document.getElementById('pdf2img-progress');
-  const progressFill = document.getElementById('pdf2img-progress-fill');
-  const progressText = document.getElementById('pdf2img-progress-text');
-  const scaleInput = document.getElementById('pdf2img-scale');
-  const scaleValue = document.getElementById('pdf2img-scale-value');
-  const formatSelect = document.getElementById('pdf2img-format');
+  const dz = document.getElementById('pdf2img-dropzone');
+  const inp = document.getElementById('pdf2img-file-input');
+  const scaleInp = document.getElementById('pdf2img-scale');
+  const scaleVal = document.getElementById('pdf2img-scale-value');
+  const formatSel = document.getElementById('pdf2img-format');
 
-  scaleInput.addEventListener('input', () => {
-    scaleValue.textContent = scaleInput.value + '%';
-  });
+  scaleInp.addEventListener('input', () => { scaleVal.textContent = scaleInp.value + '%'; });
 
-  setupDropzone('pdf2img-dropzone', 'pdf2img-file-input', (newFiles) => {
-    if (newFiles.length) {
-      pdfFile = newFiles[0];
-      options.classList.remove('hidden');
-      startBtn.disabled = false;
-    }
-  });
+  dz.addEventListener('click', () => inp.click());
+  inp.addEventListener('change', () => handleFile(Array.from(inp.files)));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(Array.from(e.dataTransfer.files)); });
 
-  startBtn.addEventListener('click', async () => {
-    if (!pdfFile) { toast('Please select a PDF file', 'error'); return; }
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
+  function handleFile(files) {
+    if (!files.length) return;
+    pdfFile = files[0];
+    document.getElementById('pdf2img-options').classList.remove('hidden');
+    document.getElementById('pdf2img-start').disabled = false;
+  }
+
+  document.getElementById('pdf2img-start').addEventListener('click', async () => {
+    if (!pdfFile) return;
+    document.getElementById('pdf2img-start').disabled = true;
+    document.getElementById('pdf2img-progress').classList.remove('hidden');
 
     try {
-      await ensurePDFJS();
-      const scale = parseInt(scaleInput.value, 10) / 100;
-      const format = formatSelect.value;
+      const scale = parseInt(scaleInp.value, 10) / 100;
+      const format = formatSel.value;
+      const outName = document.getElementById('pdf2img-output-name').value.trim() || defaultFilename(pdfFile.name, '');
 
-      progressText.textContent = 'Rendering pages...';
+      await pdfjs();
       const data = await pdfFile.arrayBuffer();
       const pdf = await window.pdfjsLib.getDocument({ data }).promise;
-      const totalPages = pdf.numPages;
+      const total = pdf.numPages;
       const images = [];
 
-      for (let i = 1; i <= totalPages; i++) {
+      for (let i = 1; i <= total; i++) {
         const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale });
-        const canvas = document.createElement('canvas');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        images.push(canvas.toDataURL(format, 0.92));
-        progressFill.style.width = `${(i / totalPages) * 90}%`;
-        progressText.textContent = `Rendering page ${i} of ${totalPages}...`;
+        const vp = page.getViewport({ scale });
+        const c = document.createElement('canvas');
+        c.width = vp.width;
+        c.height = vp.height;
+        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        images.push(c.toDataURL(format, 0.95));
+        document.getElementById('pdf2img-progress-fill').style.width = `${(i/total)*90}%`;
+        document.getElementById('pdf2img-progress-text').textContent = `Rendering page ${i} of ${total}...`;
       }
 
-      await ensureJSZip();
+      await jszip();
       const JSZip = window.JSZip;
       const zip = new JSZip();
       const ext = format === 'image/png' ? '.png' : '.jpg';
+      images.forEach((img, i) => {
+        zip.file(`${outName}-page-${i+1}${ext}`, img.split(',')[1], { base64: true });
+      });
 
-      for (let i = 0; i < images.length; i++) {
-        const base64 = images[i].split(',')[1];
-        zip.file(`page-${i + 1}${ext}`, base64, { base64: true });
-      }
-
-      progressText.textContent = 'Creating ZIP...';
+      document.getElementById('pdf2img-progress-text').textContent = 'Creating ZIP...';
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
+      document.getElementById('pdf2img-progress-fill').style.width = '100%';
+      document.getElementById('pdf2img-progress-text').textContent = 'Done!';
 
-      downloadBlob(zipBlob, pdfFile.name.replace('.pdf', '-images.zip'));
+      dlBlob(zipBlob, outName + '-images.zip');
       toast('PDF converted to images!', 'success');
       resetTool('pdf2img');
     } catch (err) {
       toast('Conversion failed: ' + err.message, 'error');
-      console.error('PDF2Img error:', err);
     } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
+      document.getElementById('pdf2img-start').disabled = false;
+      setTimeout(() => document.getElementById('pdf2img-progress').classList.add('hidden'), 2000);
     }
   });
 }
 
 /* ===========================================================
-   TOOL: Image to PDF
-   =========================================================== */
-function initImg2PdfTool() {
-  const files = [];
-  const input = document.getElementById('img2pdf-file-input');
-  const startBtn = document.getElementById('img2pdf-start');
-  const options = document.getElementById('img2pdf-options');
-  const progress = document.getElementById('img2pdf-progress');
-  const progressFill = document.getElementById('img2pdf-progress-fill');
-  const progressText = document.getElementById('img2pdf-progress-text');
-  const pageSize = document.getElementById('img2pdf-pagesize');
-
-  setupDropzone('img2pdf-dropzone', 'img2pdf-file-input', (newFiles) => {
-    for (const f of newFiles) {
-      if (f.type.startsWith('image/')) files.push(f);
-    }
-    renderFileList('img2pdf-file-list', files);
-    options.classList.remove('hidden');
-    startBtn.disabled = files.length === 0;
-  }, true);
-
-  startBtn.addEventListener('click', async () => {
-    if (!files.length) { toast('Please select at least one image', 'error'); return; }
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-
-    try {
-      await ensurePDFLib();
-      const { PDFDocument } = PDFLib;
-
-      const doc = await PDFDocument.create();
-      const size = pageSize.value;
-
-      for (let i = 0; i < files.length; i++) {
-        const buf = await files[i].arrayBuffer();
-        let image;
-        if (files[i].type === 'image/png') {
-          image = await doc.embedPng(buf);
-        } else {
-          image = await doc.embedJpg(buf);
-        }
-        const { width: imgW, height: imgH } = image.scale(1);
-
-        let page;
-        if (size === 'A4') {
-          page = doc.addPage([595.28, 841.89]);
-          const scale = Math.min(595.28 / imgW, 841.89 / imgH) * 0.9;
-          const dw = imgW * scale, dh = imgH * scale;
-          page.drawImage(image, {
-            x: (595.28 - dw) / 2, y: (841.89 - dh) / 2,
-            width: dw, height: dh
-          });
-        } else if (size === 'Letter') {
-          page = doc.addPage([612, 792]);
-          const scale = Math.min(612 / imgW, 792 / imgH) * 0.9;
-          const dw = imgW * scale, dh = imgH * scale;
-          page.drawImage(image, {
-            x: (612 - dw) / 2, y: (792 - dh) / 2,
-            width: dw, height: dh
-          });
-        } else {
-          // Fit
-          page = doc.addPage([imgW, imgH]);
-          page.drawImage(image, { x: 0, y: 0, width: imgW, height: imgH });
-        }
-
-        progressFill.style.width = `${((i + 1) / files.length) * 90}%`;
-        progressText.textContent = `Processing image ${i + 1} of ${files.length}...`;
-      }
-
-      const pdfBytes = await doc.save();
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      downloadBlob(blob, 'images-to-pdf.pdf');
-      toast('Images converted to PDF!', 'success');
-      resetTool('img2pdf');
-    } catch (err) {
-      toast('Conversion failed: ' + err.message, 'error');
-      console.error('Img2PDF error:', err);
-    } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
-    }
-  });
-}
-
-/* ===========================================================
-   TOOL: Organize PDF (reorder, rotate, delete)
-   =========================================================== */
-function initOrganizeTool() {
-  let pdfFile = null;
-  let pdfDoc = null;
-  let pages = [];
-  const input = document.getElementById('organize-file-input');
-  const startBtn = document.getElementById('organize-start');
-  const editor = document.getElementById('organize-editor');
-  const pagesGrid = document.getElementById('organize-pages-grid');
-  const progress = document.getElementById('organize-progress');
-  const progressFill = document.getElementById('organize-progress-fill');
-  const progressText = document.getElementById('organize-progress-text');
-  const rotateCW = document.getElementById('organize-rotate-cw');
-  const rotateCCW = document.getElementById('organize-rotate-ccw');
-  const deleteBtn = document.getElementById('organize-delete');
-
-  setupDropzone('organize-dropzone', 'organize-file-input', async (newFiles) => {
-    if (!newFiles.length) return;
-    pdfFile = newFiles[0];
-    editor.classList.remove('hidden');
-    startBtn.disabled = false;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-    progressText.textContent = 'Loading pages...';
-
-    try {
-      await ensurePDFLib();
-      await ensurePDFJS();
-      const { PDFDocument } = PDFLib;
-
-      const buf = await pdfFile.arrayBuffer();
-      pdfDoc = await PDFDocument.load(buf);
-      const total = pdfDoc.getPageCount();
-
-      pages = [];
-      for (let i = 0; i < total; i++) {
-        pages.push({ index: i, rotation: 0 });
-      }
-
-      const pdfjsData = await window.pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
-
-      for (let i = 0; i < total; i++) {
-        const page = await pdfjsData.getPage(i + 1);
-        const vp = page.getViewport({ scale: 0.3 });
-        const canvas = document.createElement('canvas');
-        canvas.width = vp.width;
-        canvas.height = vp.height;
-        const ctx = canvas.getContext('2d');
-        await page.render({ canvasContext: ctx, viewport: vp }).promise;
-        pages[i].thumbnail = canvas.toDataURL();
-
-        /* Store page objects for later use */
-        const pdfPage = pdfDoc.getPages()[i];
-        pages[i].width = pdfPage.getWidth();
-        pages[i].height = pdfPage.getHeight();
-
-        progressFill.style.width = `${((i + 1) / total) * 50}%`;
-        progressText.textContent = `Loading page ${i + 1} of ${total}...`;
-      }
-
-      renderOrganizePages();
-      progress.classList.add('hidden');
-      toast(`Loaded ${total} pages`, 'success');
-    } catch (err) {
-      toast('Failed to load PDF: ' + err.message, 'error');
-      editor.classList.add('hidden');
-      startBtn.disabled = true;
-      progress.classList.add('hidden');
-    }
-  });
-
-  function renderOrganizePages() {
-    const sel = new Set(pages.filter(p => p.selected).map(p => p.index));
-    pagesGrid.innerHTML = pages.map((p, i) => {
-      const selected = sel.has(p.index) ? ' selected' : '';
-      const rot = p.rotation || 0;
-      const rotLabel = rot ? ` (${rot}°)` : '';
-      const transform = rot ? `style="transform:rotate(${rot}deg)"` : '';
-      return `<div class="organize-page${selected}" data-page="${i}" draggable="true">
-        <img src="${p.thumbnail}" alt="Page ${p.index + 1}" ${transform}>
-        <div class="organize-page-label">${p.index + 1}${rotLabel}</div>
-      </div>`;
-    }).join('');
-
-    /* Click to select */
-    pagesGrid.querySelectorAll('.organize-page').forEach(el => {
-      el.addEventListener('click', () => {
-        const idx = parseInt(el.dataset.page, 10);
-        pages[idx].selected = !pages[idx].selected;
-        el.classList.toggle('selected');
-      });
-    });
-
-    /* Drag & drop reorder */
-    let dragSrc = null;
-    pagesGrid.querySelectorAll('.organize-page').forEach(el => {
-      el.addEventListener('dragstart', (e) => {
-        dragSrc = parseInt(el.dataset.page, 10);
-        e.dataTransfer.effectAllowed = 'move';
-      });
-      el.addEventListener('dragover', (e) => e.preventDefault());
-      el.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const target = parseInt(el.dataset.page, 10);
-        if (dragSrc === null || dragSrc === target) return;
-        const [moved] = pages.splice(dragSrc, 1);
-        pages.splice(target, 0, moved);
-        /* Renumber indices */
-        pages.forEach((p, i) => { p.index = i; });
-        renderOrganizePages();
-        dragSrc = null;
-      });
-    });
-
-    /* Reverse order if pages are empty */
-    if (!pages.length) {
-      pagesGrid.innerHTML = '<p style="color:var(--ink-muted);font-size:13px;text-align:center;padding:20px;">No pages loaded</p>';
-    }
-  }
-
-  rotateCW.addEventListener('click', () => {
-    pages.forEach(p => { if (p.selected) p.rotation = (p.rotation || 0) + 90; });
-    renderOrganizePages();
-  });
-
-  rotateCCW.addEventListener('click', () => {
-    pages.forEach(p => { if (p.selected) p.rotation = (p.rotation || 0) - 90; });
-    renderOrganizePages();
-  });
-
-  deleteBtn.addEventListener('click', () => {
-    const remaining = pages.filter(p => !p.selected);
-    if (remaining.length === 0) {
-      toast('Cannot delete all pages', 'error');
-      return;
-    }
-    pages = remaining;
-    pages.forEach((p, i) => { p.index = i; });
-    renderOrganizePages();
-  });
-
-  startBtn.addEventListener('click', async () => {
-    if (!pages.length) { toast('No pages to process', 'error'); return; }
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-    progressText.textContent = 'Building PDF...';
-
-    try {
-      await ensurePDFLib();
-      const { PDFDocument } = PDFLib;
-
-      const buf = await pdfFile.arrayBuffer();
-      const srcDoc = await PDFDocument.load(buf);
-      const newDoc = await PDFDocument.create();
-
-      for (let i = 0; i < pages.length; i++) {
-        const p = pages[i];
-        const [copiedPage] = await newDoc.copyPages(srcDoc, [p.index]);
-        if (p.rotation) {
-          const current = copiedPage.getRotation().angle;
-          copiedPage.setRotation(PDFLib.degrees(current + p.rotation));
-        }
-        newDoc.addPage(copiedPage);
-        progressFill.style.width = `${((i + 1) / pages.length) * 90}%`;
-        progressText.textContent = `Processing page ${i + 1} of ${pages.length}...`;
-      }
-
-      const pdfBytes = await newDoc.save();
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      downloadBlob(blob, pdfFile.name.replace('.pdf', '-organized.pdf'));
-      toast('PDF organized successfully!', 'success');
-      resetTool('organize');
-    } catch (err) {
-      toast('Failed to organize PDF: ' + err.message, 'error');
-      console.error('Organize error:', err);
-    } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
-    }
-  });
-}
-
-/* ===========================================================
-   TOOL: Protect PDF (add password)
+   PROTECT PDF
    =========================================================== */
 function initProtectTool() {
-  let pdfFile = null;
-  const input = document.getElementById('protect-file-input');
-  const startBtn = document.getElementById('protect-start');
-  const options = document.getElementById('protect-options');
-  const progress = document.getElementById('protect-progress');
-  const progressFill = document.getElementById('protect-progress-fill');
-  const progressText = document.getElementById('protect-progress-text');
-  const passwordInput = document.getElementById('protect-password');
-  const confirmInput = document.getElementById('protect-confirm');
-  const errorEl = document.getElementById('protect-error');
-
-  setupDropzone('protect-dropzone', 'protect-file-input', (newFiles) => {
-    if (newFiles.length) {
-      pdfFile = newFiles[0];
-      options.classList.remove('hidden');
-      startBtn.disabled = false;
-    }
+  setupDropzoneSimple('protect', () => {
+    document.getElementById('protect-options').classList.remove('hidden');
+    document.getElementById('protect-start').disabled = false;
   });
-
-  startBtn.addEventListener('click', async () => {
-    if (!pdfFile) { toast('Please select a PDF file', 'error'); return; }
-    const pass = passwordInput.value;
-    const conf = confirmInput.value;
-    if (!pass || pass.length < 4) {
-      errorEl.textContent = 'Password must be at least 4 characters';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-    if (pass !== conf) {
-      errorEl.textContent = 'Passwords do not match';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-    errorEl.classList.add('hidden');
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-    progressText.textContent = 'Protecting PDF...';
-
+  document.getElementById('protect-start').addEventListener('click', async () => {
+    const pass = document.getElementById('protect-password').value;
+    const conf = document.getElementById('protect-confirm').value;
+    const err = document.getElementById('protect-error');
+    if (!pass || pass.length < 4) { err.textContent = 'Password must be at least 4 characters'; err.classList.remove('hidden'); return; }
+    if (pass !== conf) { err.textContent = 'Passwords do not match'; err.classList.remove('hidden'); return; }
+    err.classList.add('hidden');
+    document.getElementById('protect-start').disabled = true;
+    document.getElementById('protect-progress').classList.remove('hidden');
     try {
-      await ensurePDFLib();
-      const { PDFDocument } = PDFLib;
-
-      const buf = await pdfFile.arrayBuffer();
-      const doc = await PDFDocument.load(buf);
-
-      progressFill.style.width = '50%';
-      progressText.textContent = 'Applying password...';
-
-      const pdfBytes = await doc.save({
-        ownerPassword: pass,
-        userPassword: pass
-      });
-
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      downloadBlob(blob, pdfFile.name.replace('.pdf', '-protected.pdf'));
-      toast('PDF protected successfully!', 'success');
+      await pdflib();
+      const pf = _toolFiles['protect'];
+      if (!pf) { toast('No file selected', 'error'); document.getElementById('protect-start').disabled = false; return; }
+      const buf = await pf.arrayBuffer();
+      const doc = await PDFLib.PDFDocument.load(buf);
+      const bytes = await doc.save({ ownerPassword: pass, userPassword: pass });
+      dlBlob(new Blob([bytes], {type:'application/pdf'}), pf.name.replace('.pdf','-protected.pdf'));
+      toast('PDF protected!', 'success');
       resetTool('protect');
-    } catch (err) {
-      toast('Failed to protect PDF: ' + err.message, 'error');
-      console.error('Protect error:', err);
-    } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
-    }
+    } catch (err) { toast('Failed: '+err.message, 'error'); }
+    finally { document.getElementById('protect-start').disabled = false; setTimeout(() => document.getElementById('protect-progress').classList.add('hidden'), 2000); }
   });
 }
 
 /* ===========================================================
-   TOOL: Unlock PDF (remove password)
+   UNLOCK PDF
    =========================================================== */
 function initUnlockTool() {
-  let pdfFile = null;
-  const input = document.getElementById('unlock-file-input');
-  const startBtn = document.getElementById('unlock-start');
-  const options = document.getElementById('unlock-options');
-  const progress = document.getElementById('unlock-progress');
-  const progressFill = document.getElementById('unlock-progress-fill');
-  const progressText = document.getElementById('unlock-progress-text');
-  const passwordInput = document.getElementById('unlock-password');
-  const errorEl = document.getElementById('unlock-error');
-
-  setupDropzone('unlock-dropzone', 'unlock-file-input', (newFiles) => {
-    if (newFiles.length) {
-      pdfFile = newFiles[0];
-      options.classList.remove('hidden');
-      startBtn.disabled = false;
-    }
+  setupDropzoneSimple('unlock', () => {
+    document.getElementById('unlock-options').classList.remove('hidden');
+    document.getElementById('unlock-start').disabled = false;
   });
-
-  startBtn.addEventListener('click', async () => {
-    if (!pdfFile) { toast('Please select a PDF file', 'error'); return; }
-    const pass = passwordInput.value;
-    if (!pass) {
-      errorEl.textContent = 'Please enter the document password';
-      errorEl.classList.remove('hidden');
-      return;
-    }
-    errorEl.classList.add('hidden');
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-    progressText.textContent = 'Unlocking PDF...';
-
+  document.getElementById('unlock-start').addEventListener('click', async () => {
+    const pass = document.getElementById('unlock-password').value;
+    const err = document.getElementById('unlock-error');
+    if (!pass) { err.textContent = 'Please enter the password'; err.classList.remove('hidden'); return; }
+    err.classList.add('hidden');
+    document.getElementById('unlock-start').disabled = true;
+    document.getElementById('unlock-progress').classList.remove('hidden');
     try {
-      await ensurePDFLib();
-      const { PDFDocument } = PDFLib;
-
-      const buf = await pdfFile.arrayBuffer();
-      // Try to load with password
-      const doc = await PDFDocument.load(buf, { password: pass });
-
-      progressFill.style.width = '50%';
-      progressText.textContent = 'Removing password...';
-
-      // Save without password
-      const pdfBytes = await doc.save();
-
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      downloadBlob(blob, pdfFile.name.replace('.pdf', '-unlocked.pdf'));
-      toast('PDF unlocked successfully!', 'success');
+      await pdflib();
+      const pf = _toolFiles['unlock'];
+      if (!pf) { toast('No file selected', 'error'); document.getElementById('unlock-start').disabled = false; return; }
+      const buf = await pf.arrayBuffer();
+      const doc = await PDFLib.PDFDocument.load(buf, { password: pass });
+      const bytes = await doc.save();
+      dlBlob(new Blob([bytes], {type:'application/pdf'}), pf.name.replace('.pdf','-unlocked.pdf'));
+      toast('PDF unlocked!', 'success');
       resetTool('unlock');
-    } catch (err) {
-      if (err.message && err.message.includes('password')) {
-        errorEl.textContent = 'Incorrect password';
-        errorEl.classList.remove('hidden');
-      } else {
-        toast('Failed to unlock PDF: ' + err.message, 'error');
-      }
-      console.error('Unlock error:', err);
-    } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
+    } catch (e) {
+      if (e.message.includes('password')) { err.textContent = 'Incorrect password'; err.classList.remove('hidden'); }
+      else toast('Failed: '+e.message, 'error');
     }
+    finally { document.getElementById('unlock-start').disabled = false; setTimeout(() => document.getElementById('unlock-progress').classList.add('hidden'), 2000); }
   });
 }
 
 /* ===========================================================
-   TOOL: Watermark PDF
+   WATERMARK PDF
    =========================================================== */
 function initWatermarkTool() {
-  let pdfFile = null;
-  const input = document.getElementById('watermark-file-input');
-  const startBtn = document.getElementById('watermark-start');
-  const options = document.getElementById('watermark-options');
-  const progress = document.getElementById('watermark-progress');
-  const progressFill = document.getElementById('watermark-progress-fill');
-  const progressText = document.getElementById('watermark-progress-text');
-  const textInput = document.getElementById('watermark-text');
-  const opacityInput = document.getElementById('watermark-opacity');
-  const opacityValue = document.getElementById('watermark-opacity-value');
-  const positionSelect = document.getElementById('watermark-position');
-
-  opacityInput.addEventListener('input', () => {
-    opacityValue.textContent = Math.round(opacityInput.value * 100) + '%';
+  const opacityInp = document.getElementById('watermark-opacity');
+  const opacityVal = document.getElementById('watermark-opacity-value');
+  opacityInp.addEventListener('input', () => { opacityVal.textContent = Math.round(opacityInp.value * 100) + '%'; });
+  setupDropzoneSimple('watermark', () => {
+    document.getElementById('watermark-options').classList.remove('hidden');
+    document.getElementById('watermark-start').disabled = false;
   });
-
-  setupDropzone('watermark-dropzone', 'watermark-file-input', (newFiles) => {
-    if (newFiles.length) {
-      pdfFile = newFiles[0];
-      options.classList.remove('hidden');
-      startBtn.disabled = false;
-    }
-  });
-
-  startBtn.addEventListener('click', async () => {
-    if (!pdfFile) { toast('Please select a PDF file', 'error'); return; }
-    const watermarkText = textInput.value.trim();
-    if (!watermarkText) { toast('Please enter watermark text', 'error'); return; }
-
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-    progressText.textContent = 'Adding watermark...';
-
+  document.getElementById('watermark-start').addEventListener('click', async () => {
+    const text = document.getElementById('watermark-text').value.trim();
+    if (!text) { toast('Enter watermark text', 'error'); return; }
+    document.getElementById('watermark-start').disabled = true;
+    document.getElementById('watermark-progress').classList.remove('hidden');
     try {
-      await ensurePDFLib();
-      const { PDFDocument, rgb, StandardFonts } = PDFLib;
-
-      const buf = await pdfFile.arrayBuffer();
-      const doc = await PDFDocument.load(buf);
+      await pdflib();
+      const pf = _toolFiles['watermark'];
+      if (!pf) { toast('No file selected', 'error'); document.getElementById('watermark-start').disabled = false; return; }
+      const buf = await pf.arrayBuffer();
+      const doc = await PDFLib.PDFDocument.load(buf);
       const pages = doc.getPages();
-      const font = await doc.embedFont(StandardFonts.Helvetica);
-      const opacity = parseFloat(opacityInput.value);
-      const position = positionSelect.value;
-
+      const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const opacity = parseFloat(opacityInp.value);
+      const pos = document.getElementById('watermark-position').value;
       for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        const { width, height } = page.getSize();
-        const textSize = Math.min(width, height) * 0.04;
-
-        let x, y, rotation;
-        switch (position) {
-          case 'diagonal':
-            x = width / 2;
-            y = height / 2;
-            rotation = 45;
-            break;
-          case 'top-left':
-            x = width * 0.08;
-            y = height * 0.92;
-            rotation = 0;
-            break;
-          case 'bottom-right':
-            x = width * 0.92;
-            y = height * 0.08;
-            rotation = 0;
-            break;
-          default: // center
-            x = width / 2;
-            y = height / 2;
-            rotation = 0;
+        const pg = pages[i];
+        const { width, height } = pg.getSize();
+        const sz = Math.min(width, height) * 0.04;
+        let x, y, rot;
+        switch (pos) {
+          case 'diagonal': x = width/2; y = height/2; rot = 45; break;
+          case 'top-left': x = width*0.08; y = height*0.92; rot = 0; break;
+          case 'bottom-right': x = width*0.92; y = height*0.08; rot = 0; break;
+          default: x = width/2; y = height/2; rot = 0;
         }
-
-        page.drawText(watermarkText, {
-          x,
-          y,
-          size: textSize,
-          font,
-          color: rgb(0.5, 0.5, 0.5),
-          opacity,
-          rotate: rotation ? PDFLib.degrees(rotation) : undefined,
-          xAlignment: 'center',
-          yAlignment: 'center'
-        });
-
-        progressFill.style.width = `${((i + 1) / pages.length) * 90}%`;
-        progressText.textContent = `Watermarking page ${i + 1} of ${pages.length}...`;
+        pg.drawText(text, { x, y, size: sz, font, color: PDFLib.rgb(0.5,0.5,0.5), opacity, rotate: rot ? PDFLib.degrees(rot) : undefined });
+        document.getElementById('watermark-progress-fill').style.width = `${((i+1)/pages.length)*90}%`;
       }
-
-      const pdfBytes = await doc.save();
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      downloadBlob(blob, pdfFile.name.replace('.pdf', '-watermarked.pdf'));
-      toast('Watermark added successfully!', 'success');
+      const bytes = await doc.save();
+      dlBlob(new Blob([bytes], {type:'application/pdf'}), pf.name.replace('.pdf','-watermarked.pdf'));
+      toast('Watermark added!', 'success');
       resetTool('watermark');
-    } catch (err) {
-      toast('Failed to add watermark: ' + err.message, 'error');
-      console.error('Watermark error:', err);
-    } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
-    }
+    } catch (err) { toast('Failed: '+err.message, 'error'); }
+    finally { document.getElementById('watermark-start').disabled = false; setTimeout(() => document.getElementById('watermark-progress').classList.add('hidden'), 2000); }
   });
 }
 
 /* ===========================================================
-   TOOL: Page Numbers
+   PAGE NUMBERS
    =========================================================== */
 function initPageNumTool() {
-  let pdfFile = null;
-  const input = document.getElementById('pagenum-file-input');
-  const startBtn = document.getElementById('pagenum-start');
-  const options = document.getElementById('pagenum-options');
-  const progress = document.getElementById('pagenum-progress');
-  const progressFill = document.getElementById('pagenum-progress-fill');
-  const progressText = document.getElementById('pagenum-progress-text');
-  const positionSelect = document.getElementById('pagenum-position');
-  const startNumInput = document.getElementById('pagenum-start');
-
-  setupDropzone('pagenum-dropzone', 'pagenum-file-input', (newFiles) => {
-    if (newFiles.length) {
-      pdfFile = newFiles[0];
-      options.classList.remove('hidden');
-      startBtn.disabled = false;
-    }
+  setupDropzoneSimple('pagenum', () => {
+    document.getElementById('pagenum-options').classList.remove('hidden');
+    document.getElementById('pagenum-start').disabled = false;
   });
-
-  startBtn.addEventListener('click', async () => {
-    if (!pdfFile) { toast('Please select a PDF file', 'error'); return; }
-    startBtn.disabled = true;
-    progress.classList.remove('hidden');
-    progressFill.style.width = '0%';
-    progressText.textContent = 'Adding page numbers...';
-
+  document.getElementById('pagenum-start').addEventListener('click', async () => {
+    document.getElementById('pagenum-start').disabled = true;
+    document.getElementById('pagenum-progress').classList.remove('hidden');
     try {
-      await ensurePDFLib();
-      const { PDFDocument, rgb, StandardFonts } = PDFLib;
-
-      const buf = await pdfFile.arrayBuffer();
-      const doc = await PDFDocument.load(buf);
+      await pdflib();
+      const pf = _toolFiles['pagenum'];
+      if (!pf) { toast('No file selected', 'error'); document.getElementById('pagenum-start').disabled = false; return; }
+      const buf = await pf.arrayBuffer();
+      const doc = await PDFLib.PDFDocument.load(buf);
       const pages = doc.getPages();
-      const font = await doc.embedFont(StandardFonts.Helvetica);
-      const position = positionSelect.value;
-      const startNum = parseInt(startNumInput.value, 10) || 1;
-
+      const font = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const pos = document.getElementById('pagenum-position').value;
+      const startNum = parseInt(document.getElementById('pagenum-start').value, 10) || 1;
       for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        const { width, height } = page.getSize();
+        const pg = pages[i];
+        const { width, height } = pg.getSize();
         const num = startNum + i;
-        const text = String(num);
-        const fontSize = Math.min(width, height) * 0.025;
-
+        const sz = Math.min(width, height) * 0.025;
         let x, y;
-        switch (position) {
-          case 'bottom-left':
-            x = width * 0.08;
-            y = height * 0.06;
-            break;
-          case 'bottom-right':
-            x = width * 0.92;
-            y = height * 0.06;
-            break;
-          case 'top-center':
-            x = width / 2;
-            y = height * 0.94;
-            break;
-          case 'top-left':
-            x = width * 0.08;
-            y = height * 0.94;
-            break;
-          case 'top-right':
-            x = width * 0.92;
-            y = height * 0.94;
-            break;
-          default: // bottom-center
-            x = width / 2;
-            y = height * 0.06;
+        switch (pos) {
+          case 'bottom-left': x = width*0.08; y = height*0.06; break;
+          case 'bottom-right': x = width*0.92; y = height*0.06; break;
+          case 'top-center': x = width/2; y = height*0.94; break;
+          case 'top-left': x = width*0.08; y = height*0.94; break;
+          case 'top-right': x = width*0.92; y = height*0.94; break;
+          default: x = width/2; y = height*0.06;
         }
-
-        page.drawText(text, {
-          x,
-          y,
-          size: fontSize,
-          font,
-          color: rgb(0.3, 0.3, 0.3),
-          xAlignment: 'center',
-          yAlignment: 'center'
-        });
-
-        progressFill.style.width = `${((i + 1) / pages.length) * 90}%`;
-        progressText.textContent = `Adding numbers to page ${i + 1} of ${pages.length}...`;
+        pg.drawText(String(num), { x, y, size: sz, font, color: PDFLib.rgb(0.3,0.3,0.3) });
+        document.getElementById('pagenum-progress-fill').style.width = `${((i+1)/pages.length)*90}%`;
       }
-
-      const pdfBytes = await doc.save();
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Done!';
-
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      downloadBlob(blob, pdfFile.name.replace('.pdf', '-numbered.pdf'));
-      toast('Page numbers added successfully!', 'success');
+      const bytes = await doc.save();
+      dlBlob(new Blob([bytes], {type:'application/pdf'}), pf.name.replace('.pdf','-numbered.pdf'));
+      toast('Page numbers added!', 'success');
       resetTool('pagenum');
-    } catch (err) {
-      toast('Failed to add page numbers: ' + err.message, 'error');
-      console.error('PageNum error:', err);
-    } finally {
-      startBtn.disabled = false;
-      setTimeout(() => { progress.classList.add('hidden'); }, 2000);
-    }
+    } catch (err) { toast('Failed: '+err.message, 'error'); }
+    finally { document.getElementById('pagenum-start').disabled = false; setTimeout(() => document.getElementById('pagenum-progress').classList.add('hidden'), 2000); }
   });
 }
 
 /* ===========================================================
-   Reset / Cancel helpers
+   Dropzone Helper (simple single-file tools)
    =========================================================== */
-const TOOL_PREFIXES = ['merge', 'split', 'compress', 'pdf2img', 'img2pdf', 'organize', 'protect', 'unlock', 'watermark', 'pagenum'];
+const _toolFiles = {};
+
+function setupDropzoneSimple(prefix, onFile) {
+  const dz = document.getElementById(`${prefix}-dropzone`);
+  const inp = document.getElementById(`${prefix}-file-input`);
+  if (!dz || !inp) return;
+  dz.addEventListener('click', () => inp.click());
+  inp.addEventListener('change', () => {
+    const files = Array.from(inp.files);
+    if (files.length) { _toolFiles[prefix] = files[0]; if (onFile) onFile(); }
+  });
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) { _toolFiles[prefix] = files[0]; if (onFile) onFile(); }
+  });
+}
+
+
+
+/* ===========================================================
+   Overlay Management
+   =========================================================== */
+const TOOLS = ['merge','split','compress','img2pdf','pdf2img','protect','unlock','watermark','pagenum'];
+const TOOL_START_BTNS = {
+  protect: 'protect-start', unlock: 'unlock-start',
+  watermark: 'watermark-start', pagenum: 'pagenum-start'
+};
+
+function openOverlay(tool) {
+  const o = document.getElementById(`tool-overlay-${tool}`);
+  if (o) o.classList.remove('hidden');
+}
+function closeAllOverlays() {
+  TOOLS.forEach(t => {
+    const o = document.getElementById(`tool-overlay-${t}`);
+    if (o) o.classList.add('hidden');
+  });
+}
 
 function resetTool(prefix) {
-  /* Clear file inputs and lists */
-  const fileInput = document.getElementById(`${prefix}-file-input`);
-  if (fileInput) fileInput.value = '';
-  const fileList = document.getElementById(`${prefix}-file-list`);
-  if (fileList) fileList.innerHTML = '';
-  const optionsEl = document.getElementById(`${prefix}-options`);
-  if (optionsEl) optionsEl.classList.add('hidden');
+  const inp = document.getElementById(`${prefix}-file-input`);
+  if (inp) inp.value = '';
+  const list = document.getElementById(`${prefix}-file-list`);
+  if (list) list.innerHTML = '';
+  const opts = document.getElementById(`${prefix}-options`);
+  if (opts) opts.classList.add('hidden');
   const editor = document.getElementById(`${prefix}-editor`);
   if (editor) editor.classList.add('hidden');
   const startBtn = document.getElementById(`${prefix}-start`);
   if (startBtn) startBtn.disabled = true;
-  const cancelBtn = document.querySelector(`#tool-overlay-${prefix} .tool-cancel-btn`);
   const progress = document.getElementById(`${prefix}-progress`);
   if (progress) progress.classList.add('hidden');
+  const wrap = document.getElementById(`${prefix}-preview-wrap`);
+  if (wrap) wrap.classList.add('hidden');
+  const grid = document.getElementById(`${prefix}-pages-grid`);
+  if (grid) grid.innerHTML = '';
+  const imgGrid = document.getElementById(`${prefix}-grid`);
+  if (imgGrid) imgGrid.innerHTML = '';
+  const exportOpts = document.getElementById(`${prefix}-export-opts`);
+  if (exportOpts) exportOpts.classList.add('hidden');
+  const toolbar = document.getElementById(`${prefix}-toolbar`);
+  if (toolbar) toolbar.classList.add('hidden');
+  const undoBar = document.getElementById(`${prefix}-undo-bar`);
+  if (undoBar) undoBar.classList.add('hidden');
+  const cards = document.getElementById(`${prefix}-pdf-cards`);
+  if (cards) cards.innerHTML = '';
+  const outName = document.getElementById(`${prefix}-output-name`);
+  if (outName) outName.value = '';
 
-  /* Close overlay after brief delay */
   const overlay = document.getElementById(`tool-overlay-${prefix}`);
-  if (overlay) {
-    setTimeout(() => overlay.classList.add('hidden'), 300);
-  }
+  if (overlay) setTimeout(() => overlay.classList.add('hidden'), 200);
+  delete _toolFiles[prefix];
 }
 
 /* ===========================================================
-   Overlay management
+   Init
    =========================================================== */
-function openOverlay(toolName) {
-  const overlay = document.getElementById(`tool-overlay-${toolName}`);
-  if (overlay) overlay.classList.remove('hidden');
-}
-
-function closeAllOverlays() {
-  TOOL_PREFIXES.forEach(p => {
-    const overlay = document.getElementById(`tool-overlay-${p}`);
-    if (overlay) overlay.classList.add('hidden');
-  });
-}
-
-/* ===========================================================
-   Init all tools
-   =========================================================== */
-function initAllTools() {
-  /* Theme */
-  initThemeSwitch();
-
-  /* Tool cards → open overlay */
+function init() {
+  /* Tool cards → overlay */
   document.querySelectorAll('.pdf-tool-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const tool = card.dataset.tool;
-      openOverlay(tool);
-    });
+    card.addEventListener('click', () => openOverlay(card.dataset.tool));
   });
 
   /* Overlay close buttons */
   document.querySelectorAll('.tool-overlay-close').forEach(btn => {
     btn.addEventListener('click', () => {
-      const overlay = btn.closest('.tool-overlay');
-      if (overlay) overlay.classList.add('hidden');
+      const o = btn.closest('.tool-overlay');
+      if (o) o.classList.add('hidden');
     });
   });
 
   /* Cancel buttons */
   document.querySelectorAll('.tool-cancel-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const overlay = btn.closest('.tool-overlay');
-      if (overlay) overlay.classList.add('hidden');
+      const o = btn.closest('.tool-overlay');
+      if (o) o.classList.add('hidden');
     });
   });
 
-  /* Click outside panel to close */
-  document.querySelectorAll('.tool-overlay').forEach(overlay => {
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.classList.add('hidden');
-    });
+  /* Click outside to close */
+  document.querySelectorAll('.tool-overlay').forEach(o => {
+    o.addEventListener('click', (e) => { if (e.target === o) o.classList.add('hidden'); });
   });
 
-  /* Escape to close */
+  /* Escape to close all */
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeAllOverlays();
   });
 
-  /* Init each tool */
+  /* Ctrl+Z / Ctrl+Y for undo/redo */
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      if (e.shiftKey) {
+        // Redo
+        document.querySelectorAll('.btn[id$="-redo"]:not(:disabled)').forEach(b => b.click());
+      } else {
+        document.querySelectorAll('.btn[id$="-undo"]:not(:disabled)').forEach(b => b.click());
+      }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      document.querySelectorAll('.btn[id$="-redo"]:not(:disabled)').forEach(b => b.click());
+    }
+  });
+
+  /* Init all tools */
   initMergeTool();
   initSplitTool();
   initCompressTool();
-  initPdf2ImgTool();
   initImg2PdfTool();
-  initOrganizeTool();
+  initPdf2ImgTool();
   initProtectTool();
   initUnlockTool();
   initWatermarkTool();
   initPageNumTool();
 }
 
-/* Boot */
-document.addEventListener('DOMContentLoaded', initAllTools);
+document.addEventListener('DOMContentLoaded', init);

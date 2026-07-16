@@ -1,6 +1,6 @@
 /* ===========================================================
-   IST Trust Zone — PDF Tools Styles
-   Premium glassmorphism design matching the main site
+   IST Trust Zone — PDF Tools Styles v2
+   Blue-only premium design with glassmorphism
    =========================================================== */
 
 /* ---- PDF Header ---- */
@@ -8,7 +8,7 @@
   position: sticky;
   top: 0;
   z-index: 20;
-  background: linear-gradient(135deg, var(--navy-950) 0%, var(--navy-800) 50%, var(--navy-700) 100%);
+  background: linear-gradient(135deg, #0c2d52 0%, #1a4a7a 50%, #2a6a9a 100%);
   border-bottom: 1px solid rgba(255,255,255,0.06);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -22,13 +22,33 @@
   align-items: center;
   gap: 12px;
 }
-.pdf-back-btn {
+
+/* Premium Back Button */
+.premium-back-btn {
   display: inline-flex !important;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  padding: 7px 14px !important;
+  gap: 8px;
+  padding: 10px 20px !important;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
+  background: rgba(255,255,255,0.1) !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+  color: #fff !important;
+  border-radius: var(--radius-m) !important;
+  text-decoration: none;
+  transition: all var(--transition);
+  letter-spacing: 0.02em;
+}
+.premium-back-btn:hover {
+  background: rgba(255,255,255,0.2) !important;
+  border-color: rgba(255,255,255,0.35) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+.premium-back-btn svg {
+  width: 18px;
+  height: 18px;
 }
 
 /* ---- PDF Hero ---- */
@@ -37,15 +57,15 @@
   text-align: center;
   padding: 80px 20px 60px;
   overflow: hidden;
-  background: linear-gradient(180deg, var(--navy-900) 0%, var(--navy-950) 100%);
+  background: linear-gradient(180deg, #0c2d52 0%, #081c33 100%);
 }
 .pdf-hero-bg {
   position: absolute;
   inset: 0;
   opacity: 0.15;
   background:
-    radial-gradient(circle at 20% 50%, var(--gold) 0%, transparent 50%),
-    radial-gradient(circle at 80% 50%, var(--steel-500) 0%, transparent 50%);
+    radial-gradient(circle at 20% 50%, #c9a84c 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, #4c7aa3 0%, transparent 50%);
   pointer-events: none;
 }
 .pdf-hero-content {
@@ -116,26 +136,26 @@
 .pdf-tool-card:hover {
   transform: translateY(-4px);
   border-color: var(--gold);
-  box-shadow: 0 12px 40px rgba(201,168,76,0.12), 0 4px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 12px 40px rgba(42,106,154,0.15), 0 4px 12px rgba(0,0,0,0.08);
 }
 .pdf-tool-card:active {
   transform: translateY(-1px);
   transition-duration: 100ms;
 }
 .pdf-tool-icon {
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   border-radius: var(--radius-m);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 14px;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 .pdf-tool-icon svg {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
 }
 .pdf-tool-name {
   font-family: var(--font-display);
@@ -156,9 +176,9 @@
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(5,20,40,0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -171,7 +191,7 @@
 }
 .tool-overlay-panel {
   width: 100%;
-  max-width: 640px;
+  max-width: 600px;
   max-height: 90vh;
   background: var(--surface);
   border-radius: var(--radius-xl);
@@ -182,6 +202,9 @@
   animation: panelSlideUp 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
   overflow: hidden;
 }
+.tool-panel-wide {
+  max-width: 820px;
+}
 @keyframes panelSlideUp {
   from { opacity: 0; transform: translateY(20px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -190,6 +213,7 @@
   position: relative;
   padding: 20px 24px 12px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .tool-overlay-title {
   font-family: var(--font-display);
@@ -202,6 +226,7 @@
   font-size: 13px;
   color: var(--ink-muted);
   margin: 0;
+  padding-right: 40px;
 }
 .tool-overlay-close {
   position: absolute !important;
@@ -231,10 +256,29 @@
 .tool-overlay-footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 10px;
   padding: 12px 24px 20px;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tool-overlay-footer > .btn:last-child {
+  margin-left: auto;
+}
+
+/* ---- Output Name ---- */
+.tool-output-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 200px;
+}
+.tool-output-name .text-input {
+  font-size: 13px;
+  padding: 7px 12px;
+}
+.tool-output-hint {
+  font-size: 10px;
+  color: var(--ink-faint);
 }
 
 /* ---- Dropzone ---- */
@@ -264,36 +308,198 @@
   margin: 0;
 }
 
-/* ---- File List ---- */
-.tool-file-list {
-  margin-top: 16px;
+/* ---- Page Thumbnail Grid ---- */
+.page-thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.page-thumb-item {
+  position: relative;
+  aspect-ratio: 3/4;
+  border-radius: var(--radius-s);
+  border: 2px solid var(--border);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--surface-alt);
+  user-select: none;
+}
+.page-thumb-item:hover {
+  border-color: var(--steel-500);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.page-thumb-item.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(201,168,76,0.3);
+}
+.page-thumb-item.dragging {
+  opacity: 0.5;
+}
+.page-thumb-item.drag-over {
+  border-color: var(--gold);
+  border-style: dashed;
+}
+.page-thumb-item canvas,
+.page-thumb-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.page-thumb-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 9px;
+  text-align: center;
+  padding: 3px 2px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  line-height: 1.2;
+}
+.page-thumb-actions {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+.page-thumb-item:hover .page-thumb-actions {
+  opacity: 1;
+}
+.page-thumb-action {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  color: #fff;
+  font-size: 10px;
+  padding: 0;
+  transition: background var(--transition);
+}
+.page-thumb-action:hover {
+  background: rgba(0,0,0,0.85);
+}
+.page-thumb-action.del:hover {
+  background: #a3372f;
+}
+.page-thumb-check {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  border: 2px solid rgba(255,255,255,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition);
+  color: #fff;
+  font-size: 10px;
+}
+.page-thumb-item.selected .page-thumb-check {
+  opacity: 1;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+/* ---- Page Toolbar ---- */
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border);
+}
+.page-count-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  margin-left: auto;
+  padding: 2px 8px;
+  background: var(--surface);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+}
+
+/* ---- Undo Bar ---- */
+.merge-undo-bar,
+.split-undo-bar,
+.img2pdf-undo-bar {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* ---- Merge PDF Cards ---- */
+.merge-pdf-cards {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  margin-top: 12px;
 }
-.tool-file-item {
+.merge-pdf-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--surface);
+  transition: border-color var(--transition);
+}
+.merge-pdf-card:hover {
+  border-color: var(--steel-500);
+}
+.merge-pdf-card-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 10px 14px;
+  cursor: pointer;
   background: var(--surface-alt);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
 }
-.tool-file-item .file-name {
+.merge-pdf-card-header .card-expand-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform var(--transition);
+  color: var(--ink-muted);
+  flex-shrink: 0;
+}
+.merge-pdf-card-header.expanded .card-expand-icon {
+  transform: rotate(90deg);
+}
+.merge-pdf-card-header .card-filename {
   flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ink);
 }
-.tool-file-item .file-size {
+.merge-pdf-card-header .card-pagecount {
+  font-size: 11px;
   color: var(--ink-muted);
-  font-size: 12px;
   flex-shrink: 0;
 }
-.tool-file-item .file-remove {
+.merge-pdf-card-header .card-remove {
   width: 28px;
   height: 28px;
   display: flex;
@@ -307,9 +513,213 @@
   transition: all var(--transition);
   flex-shrink: 0;
 }
-.tool-file-item .file-remove:hover {
+.merge-pdf-card-header .card-remove:hover {
   background: var(--danger-bg);
   color: var(--danger);
+}
+.merge-pdf-card-body {
+  display: none;
+  padding: 10px;
+  background: var(--surface);
+}
+.merge-pdf-card-body.open {
+  display: block;
+}
+
+/* ---- Image Grid ---- */
+.img-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.img-grid-item {
+  position: relative;
+  aspect-ratio: 3/4;
+  border-radius: var(--radius-s);
+  border: 2px solid var(--border);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--transition);
+  background: var(--surface-alt);
+  user-select: none;
+}
+.img-grid-item:hover {
+  border-color: var(--steel-500);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.img-grid-item.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(201,168,76,0.3);
+}
+.img-grid-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.img-grid-item .img-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 9px;
+  text-align: center;
+  padding: 3px 2px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  line-height: 1.2;
+}
+.img-grid-item .img-check {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.5);
+  border: 2px solid rgba(255,255,255,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition);
+  color: #fff;
+  font-size: 10px;
+}
+.img-grid-item.selected .img-check {
+  opacity: 1;
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.img-grid-item.dragging {
+  opacity: 0.5;
+}
+.img-grid-item.drag-over {
+  border-color: var(--gold);
+  border-style: dashed;
+}
+
+/* ---- Image Filter Section ---- */
+.img-filter-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.img-filter-section .tool-option-group {
+  flex: 1;
+  min-width: 120px;
+  margin-bottom: 0;
+}
+
+/* ---- Image Preview ---- */
+.img-preview-wrap {
+  margin-top: 12px;
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.img-preview-frame {
+  width: 100%;
+  height: 400px;
+  border: none;
+}
+
+/* ---- Compression Stats ---- */
+.compression-stats-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.compress-file-size {
+  flex: 1;
+  text-align: center;
+  padding: 12px 8px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border);
+}
+.stat-label {
+  display: block;
+  font-size: 10px;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+.stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--heading);
+  font-family: var(--font-display);
+}
+.stat-save {
+  color: var(--success);
+}
+
+/* ---- Compress Levels ---- */
+.tool-compress-levels {
+  display: flex;
+  gap: 8px;
+}
+.compress-level-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface-alt);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+  text-align: center;
+}
+.compress-level-btn:hover {
+  border-color: var(--gold);
+  color: var(--heading);
+}
+.compress-level-btn.active {
+  border-color: var(--gold);
+  background: rgba(201,168,76,0.12);
+  color: var(--gold);
+  font-weight: 600;
+}
+.compress-level-btn small {
+  display: block;
+  font-size: 10px;
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+/* ---- Progress ---- */
+.tool-progress {
+  margin-top: 16px;
+}
+.tool-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.tool-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--gold-light));
+  border-radius: 3px;
+  transition: width 200ms ease;
+  width: 0%;
+}
+.tool-progress-text {
+  font-size: 12px;
+  color: var(--ink-muted);
+  text-align: center;
+  margin: 8px 0 0;
 }
 
 /* ---- Options ---- */
@@ -328,15 +738,14 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.tool-radio-group {
+.tool-radio-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 16px;
 }
 .tool-radio {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-size: 13px;
   color: var(--ink);
   cursor: pointer;
@@ -373,145 +782,6 @@
   margin-top: 2px;
 }
 
-/* ---- Progress ---- */
-.tool-progress {
-  margin-top: 16px;
-}
-.tool-progress-bar {
-  width: 100%;
-  height: 6px;
-  background: var(--border);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.tool-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--gold), var(--gold-light));
-  border-radius: 3px;
-  transition: width 200ms ease;
-  width: 0%;
-}
-.tool-progress-text {
-  font-size: 12px;
-  color: var(--ink-muted);
-  text-align: center;
-  margin: 8px 0 0;
-}
-
-/* ---- Compress Levels ---- */
-.tool-compress-levels {
-  display: flex;
-  gap: 8px;
-}
-.compress-level-btn {
-  flex: 1;
-  padding: 10px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  background: var(--surface-alt);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-muted);
-  cursor: pointer;
-  transition: all var(--transition);
-  text-align: center;
-}
-.compress-level-btn:hover {
-  border-color: var(--gold);
-  color: var(--heading);
-}
-.compress-level-btn.active {
-  border-color: var(--gold);
-  background: rgba(201,168,76,0.12);
-  color: var(--gold);
-  font-weight: 600;
-}
-.tool-compress-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 16px;
-}
-.compress-stat {
-  text-align: center;
-  padding: 12px 8px;
-  background: var(--surface-alt);
-  border-radius: var(--radius-s);
-  border: 1px solid var(--border);
-}
-.compress-stat-label {
-  display: block;
-  font-size: 11px;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
-}
-.compress-stat-value {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--heading);
-  font-family: var(--font-display);
-}
-
-/* ---- Organize Pages Grid ---- */
-.organize-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-}
-.organize-pages-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 8px;
-}
-.organize-page {
-  position: relative;
-  aspect-ratio: 3/4;
-  border-radius: var(--radius-s);
-  border: 2px solid var(--border);
-  overflow: hidden;
-  cursor: pointer;
-  transition: all var(--transition);
-  background: var(--surface-alt);
-}
-.organize-page:hover {
-  border-color: var(--steel-500);
-}
-.organize-page.selected {
-  border-color: var(--gold);
-  box-shadow: 0 0 0 2px rgba(201,168,76,0.3);
-}
-.organize-page canvas {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.organize-page-label {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  font-size: 9px;
-  text-align: center;
-  padding: 2px 0;
-  background: rgba(0,0,0,0.6);
-  color: #fff;
-}
-.organize-page .rotate-badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  font-size: 8px;
-  background: rgba(0,0,0,0.5);
-  color: #fff;
-  border-radius: 3px;
-  padding: 1px 3px;
-}
-
 /* ---- Tool Error ---- */
 .tool-error {
   font-size: 13px;
@@ -519,25 +789,9 @@
   margin: 0;
 }
 
-/* ---- Pages Preview (split) ---- */
-.tool-pages-preview {
-  margin-top: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.tool-page-badge {
-  padding: 4px 10px;
-  border-radius: var(--radius-s);
-  background: var(--surface-alt);
-  border: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--ink);
-}
-
 /* ---- Footer ---- */
 .pdf-footer {
-  background: var(--navy-950);
+  background: #0c2d52;
   border-top: 1px solid rgba(255,255,255,0.06);
   padding: 24px 20px;
 }
@@ -564,7 +818,7 @@
   margin: 0;
 }
 
-/* ---- Toast (reuse from main site, ensure overlay has proper z-index) ---- */
+/* ---- Toast ---- */
 .toast-container {
   z-index: 200 !important;
 }
@@ -585,12 +839,12 @@
     padding: 20px 12px 18px;
   }
   .pdf-tool-icon {
-    width: 44px;
-    height: 44px;
+    width: 50px;
+    height: 50px;
   }
   .pdf-tool-icon svg {
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
   }
   .tool-overlay {
     padding: 0;
@@ -612,44 +866,45 @@
     padding: 16px;
   }
   .tool-overlay-footer {
+    flex-direction: column;
+    align-items: stretch;
     padding: 10px 16px 16px;
+  }
+  .tool-overlay-footer > .btn:last-child {
+    margin-left: 0;
+  }
+  .tool-output-name {
+    min-width: auto;
   }
   .tool-compress-levels {
     flex-direction: column;
   }
-  .tool-compress-stats {
-    grid-template-columns: 1fr;
+  .compression-stats-row {
+    flex-direction: column;
   }
-  .organize-pages-grid {
+  .page-thumb-grid {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  }
+  .img-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+  .merge-pdf-card-body .page-thumb-grid {
     grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  }
+  .img-filter-section {
+    flex-direction: column;
   }
   .pdf-footer-inner {
     flex-direction: column;
     text-align: center;
+  }
+  .premium-back-btn {
+    padding: 8px 14px !important;
+    font-size: 13px;
   }
 }
 @media (max-width: 380px) {
   .pdf-tools-grid {
     grid-template-columns: 1fr;
   }
-}
-
-/* ---- Theme overrides ---- */
-html[data-theme="dark"] .tool-overlay {
-  background: rgba(0,0,0,0.7);
-}
-html[data-theme="blue"] .tool-overlay {
-  background: rgba(5,20,40,0.65);
-}
-html[data-theme="blue"] .pdf-hero {
-  background: linear-gradient(180deg, #0c2d52 0%, #081c33 100%);
-}
-html[data-theme="blue"] .pdf-header {
-  background: linear-gradient(135deg, #0c2d52 0%, #1a4a7a 50%, #2a6a9a 100%);
-}
-html[data-theme="blue"] .pdf-footer {
-  background: #0c2d52;
-}
-html[data-theme="blue"] .pdf-tool-card:hover {
-  box-shadow: 0 12px 40px rgba(42,106,154,0.15), 0 4px 12px rgba(0,0,0,0.08);
 }

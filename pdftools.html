@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="blue">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
@@ -7,22 +7,11 @@
 <meta name="description" content="Free online PDF tools: merge, split, compress, convert and more. All processing happens in your browser.">
 <meta name="theme-color" content="#0f2942">
 <link rel="icon" type="image/png" href="assets/logo.png">
-<script>
-(function () {
-  try {
-    var t = localStorage.getItem("ist_theme");
-    if (t === "dark" || t === "blue") document.documentElement.setAttribute("data-theme", t);
-    else document.documentElement.setAttribute("data-theme", "dark");
-  } catch (_) {
-    document.documentElement.setAttribute("data-theme", "dark");
-  }
-})();
-</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css?v=12">
-<link rel="stylesheet" href="css/pdftools.css?v=1">
+<link rel="stylesheet" href="css/pdftools.css?v=2">
 </head>
 <body>
 
@@ -31,24 +20,16 @@
 <!-- ===================== HEADER ===================== -->
 <header class="pdf-header">
   <div class="header-inner">
-    <a href="index.html" class="brand" style="text-decoration:none;display:flex;align-items:center;gap:10px;">
-      <img src="assets/logo.png" alt="IST Trust Zone" class="brand-logo" style="height:36px;width:36px;border-radius:50%;">
+    <a href="index.html" class="brand" style="text-decoration:none;display:flex;align-items:center;gap:12px;">
+      <img src="assets/logo.png" alt="IST Trust Zone" class="brand-logo" style="height:40px;width:40px;border-radius:50%;">
       <div class="brand-text" style="display:flex;flex-direction:column;">
-        <span class="brand-name" style="font-size:16px;color:#fff;">IST Trust Zone</span>
-        <span class="brand-sub" style="font-size:10px;color:rgba(255,255,255,0.6);">PDF Tools</span>
+        <span class="brand-name" style="font-size:18px;color:#fff;">IST Trust Zone</span>
+        <span class="brand-sub" style="font-size:11px;color:rgba(255,255,255,0.6);">PDF Tools</span>
       </div>
     </a>
     <div style="flex:1;"></div>
-    <div id="theme-switch" class="theme-switch" role="group" aria-label="Theme selection">
-      <button type="button" class="theme-btn" data-theme-value="dark" aria-label="Dark theme" title="Dark">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-      </button>
-      <button type="button" class="theme-btn" data-theme-value="blue" aria-label="Blue theme" title="Blue">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3c3.5 4 6 7.4 6 10.5a6 6 0 1 1-12 0C6 10.4 8.5 7 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
-      </button>
-    </div>
-    <a href="index.html" class="btn btn-ghost pdf-back-btn">
-      <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <a href="index.html" class="pdf-back-btn premium-back-btn">
+      <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Back to App
     </a>
   </div>
@@ -68,8 +49,8 @@
   <div class="pdf-tools-grid" id="pdf-tools-grid">
     <!-- Merge PDF -->
     <button class="pdf-tool-card" data-tool="merge" aria-label="Merge PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#667eea,#764ba2);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8"/></svg>
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);box-shadow:0 6px 20px rgba(102,126,234,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h8"/></svg>
       </div>
       <h3 class="pdf-tool-name">Merge PDF</h3>
       <p class="pdf-tool-desc">Combine multiple PDFs into one document</p>
@@ -77,53 +58,44 @@
 
     <!-- Split PDF -->
     <button class="pdf-tool-card" data-tool="split" aria-label="Split PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#f093fb,#f5576c);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><path d="M12 3v18M8 7l-4 5 4 5M16 7l4 5-4 5"/></svg>
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);box-shadow:0 6px 20px rgba(240,147,251,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><path d="M12 3v18M8 7l-4 5 4 5M16 7l4 5-4 5"/></svg>
       </div>
       <h3 class="pdf-tool-name">Split PDF</h3>
-      <p class="pdf-tool-desc">Extract pages or split into separate PDFs</p>
+      <p class="pdf-tool-desc">Extract pages or split into separate files</p>
     </button>
 
     <!-- Compress PDF -->
     <button class="pdf-tool-card" data-tool="compress" aria-label="Compress PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#4facfe,#00f2fe);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><path d="M6 20h12a2 2 0 0 0 2-2V9l-5-5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/><path d="M14 4v5h5"/><path d="M8 12h8M12 16V9"/></svg>
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#4facfe 0%,#00f2fe 100%);box-shadow:0 6px 20px rgba(79,172,254,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><path d="M6 20h12a2 2 0 0 0 2-2V9l-5-5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/><path d="M14 4v5h5"/><path d="M8 12h8M12 16V9"/></svg>
       </div>
       <h3 class="pdf-tool-name">Compress PDF</h3>
       <p class="pdf-tool-desc">Reduce PDF file size while keeping quality</p>
     </button>
 
-    <!-- PDF to Image -->
-    <button class="pdf-tool-card" data-tool="pdf2img" aria-label="PDF to Image">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#fa709a,#fee140);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-      </div>
-      <h3 class="pdf-tool-name">PDF to Image</h3>
-      <p class="pdf-tool-desc">Convert PDF pages to JPG or PNG images</p>
-    </button>
-
     <!-- Image to PDF -->
     <button class="pdf-tool-card" data-tool="img2pdf" aria-label="Image to PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l4-4 3 3 5-5 6 6"/></svg>
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#a18cd1 0%,#fbc2eb 100%);box-shadow:0 6px 20px rgba(161,140,209,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 16l4-4 3 3 5-5 6 6"/></svg>
       </div>
       <h3 class="pdf-tool-name">Image to PDF</h3>
       <p class="pdf-tool-desc">Convert images (JPG, PNG) to PDF documents</p>
     </button>
 
-    <!-- Organize PDF -->
-    <button class="pdf-tool-card" data-tool="organize" aria-label="Organize PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#ffecd2,#fcb69f);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/><path d="M9 15l3-3 3 3M12 12v6"/></svg>
+    <!-- PDF to Image (moved to bottom) -->
+    <button class="pdf-tool-card" data-tool="pdf2img" aria-label="PDF to Image" style="order:99;">
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#fa709a 0%,#fee140 100%);box-shadow:0 6px 20px rgba(250,112,154,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
       </div>
-      <h3 class="pdf-tool-name">Organize PDF</h3>
-      <p class="pdf-tool-desc">Reorder, rotate, delete pages in your PDF</p>
+      <h3 class="pdf-tool-name">PDF to Image</h3>
+      <p class="pdf-tool-desc">Convert PDF pages to JPG or PNG images</p>
     </button>
 
     <!-- Protect PDF -->
     <button class="pdf-tool-card" data-tool="protect" aria-label="Protect PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#89f7fe,#66a6ff);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#89f7fe 0%,#66a6ff 100%);box-shadow:0 6px 20px rgba(137,247,254,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       </div>
       <h3 class="pdf-tool-name">Protect PDF</h3>
       <p class="pdf-tool-desc">Add password protection to your PDF</p>
@@ -131,8 +103,8 @@
 
     <!-- Unlock PDF -->
     <button class="pdf-tool-card" data-tool="unlock" aria-label="Unlock PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#a8edea,#fed6e3);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><path d="M12 16v2"/></svg>
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#a8edea 0%,#fed6e3 100%);box-shadow:0 6px 20px rgba(168,237,234,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><path d="M12 16v2"/></svg>
       </div>
       <h3 class="pdf-tool-name">Unlock PDF</h3>
       <p class="pdf-tool-desc">Remove password protection from PDF</p>
@@ -140,8 +112,8 @@
 
     <!-- Watermark PDF -->
     <button class="pdf-tool-card" data-tool="watermark" aria-label="Watermark PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#fddb92,#d1fdff);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/><text x="8" y="18" font-size="8" font-weight="bold" fill="white">W</text></svg>
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#fddb92 0%,#d1fdff 100%);box-shadow:0 6px 20px rgba(253,219,146,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/><text x="8" y="18" font-size="8" font-weight="bold" fill="white">W</text></svg>
       </div>
       <h3 class="pdf-tool-name">Add Watermark</h3>
       <p class="pdf-tool-desc">Add text watermark to all pages</p>
@@ -149,8 +121,8 @@
 
     <!-- Page Numbers -->
     <button class="pdf-tool-card" data-tool="pagenum" aria-label="Page Numbers">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#c1dfc4,#deecdd);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/><path d="M8 16h8M8 12h8"/></svg>
+      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#c1dfc4 0%,#deecdd 100%);box-shadow:0 6px 20px rgba(193,223,196,0.35);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z"/><path d="M14 2v6h6"/><path d="M8 16h8M8 12h8"/></svg>
       </div>
       <h3 class="pdf-tool-name">Page Numbers</h3>
       <p class="pdf-tool-desc">Add page numbers to your PDF document</p>
@@ -171,12 +143,12 @@
 
 <!-- ===================== TOOL OVERLAYS ===================== -->
 
-<!-- Merge Overlay -->
+<!-- MERGE OVERLAY -->
 <div id="tool-overlay-merge" class="tool-overlay hidden">
-  <div class="tool-overlay-panel">
+  <div class="tool-overlay-panel tool-panel-wide">
     <div class="tool-overlay-header">
       <h2 class="tool-overlay-title">Merge PDF</h2>
-      <p class="tool-overlay-desc">Select PDF files to merge them into one document</p>
+      <p class="tool-overlay-desc">Combine multiple PDFs into one document. Drag pages between PDFs to reorder.</p>
       <button class="tool-overlay-close icon-btn" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button>
@@ -187,25 +159,33 @@
         <p>Drop PDF files here or click to upload</p>
         <input type="file" id="merge-file-input" accept=".pdf,application/pdf" multiple hidden>
       </div>
-      <div id="merge-file-list" class="tool-file-list"></div>
+      <div class="merge-undo-bar hidden" id="merge-undo-bar">
+        <button id="merge-undo" class="btn btn-ghost btn-sm" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M3 10h13a4 4 0 0 1 0 8H7"/><polyline points="7 6 3 10 7 14"/></svg> Undo</button>
+        <button id="merge-redo" class="btn btn-ghost btn-sm" title="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M21 10H8a4 4 0 0 0 0 8h9"/><polyline points="17 6 21 10 17 14"/></svg> Redo</button>
+      </div>
+      <div id="merge-pdf-cards" class="merge-pdf-cards"></div>
       <div id="merge-progress" class="tool-progress hidden">
         <div class="tool-progress-bar"><div id="merge-progress-fill" class="tool-progress-fill"></div></div>
         <p id="merge-progress-text" class="tool-progress-text">Processing...</p>
       </div>
     </div>
     <div class="tool-overlay-footer">
+      <div class="tool-output-name">
+        <input type="text" id="merge-output-name" class="text-input" placeholder="Output name (optional)" style="font-size:13px;padding:8px 12px;">
+        <span class="tool-output-hint">Default: IstServices_(filename).pdf</span>
+      </div>
       <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
       <button id="merge-start" class="btn btn-primary" disabled>Merge PDFs</button>
     </div>
   </div>
 </div>
 
-<!-- Split Overlay -->
+<!-- SPLIT OVERLAY -->
 <div id="tool-overlay-split" class="tool-overlay hidden">
-  <div class="tool-overlay-panel">
+  <div class="tool-overlay-panel tool-panel-wide">
     <div class="tool-overlay-header">
       <h2 class="tool-overlay-title">Split PDF</h2>
-      <p class="tool-overlay-desc">Extract pages or split a PDF into multiple files</p>
+      <p class="tool-overlay-desc">Split a PDF, reorder pages, rotate, delete — then export as ZIP or individual PDF.</p>
       <button class="tool-overlay-close icon-btn" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button>
@@ -213,22 +193,32 @@
     <div class="tool-overlay-body">
       <div class="tool-dropzone" id="split-dropzone">
         <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <p>Drop a PDF file here or click to upload</p>
-        <input type="file" id="split-file-input" accept=".pdf,application/pdf" hidden>
+        <p>Drop a PDF file here or click to upload. Drop more PDFs to merge.</p>
+        <input type="file" id="split-file-input" accept=".pdf,application/pdf" multiple hidden>
       </div>
-      <div id="split-options" class="tool-options hidden">
+      <div class="split-undo-bar hidden" id="split-undo-bar">
+        <button id="split-undo" class="btn btn-ghost btn-sm"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M3 10h13a4 4 0 0 1 0 8H7"/><polyline points="7 6 3 10 7 14"/></svg> Undo</button>
+        <button id="split-redo" class="btn btn-ghost btn-sm"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M21 10H8a4 4 0 0 0 0 8h9"/><polyline points="17 6 21 10 17 14"/></svg> Redo</button>
+      </div>
+      <div id="split-toolbar" class="page-toolbar hidden">
+        <button class="btn btn-ghost btn-sm page-rotate-cw-all"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.5 15.5A9 9 0 1 1 12 3a8.9 8.9 0 0 1 6.4 2.7L23 10"/></svg> Rotate CW</button>
+        <button class="btn btn-ghost btn-sm page-rotate-ccw-all"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.5 15.5A9 9 0 1 0 12 3a8.9 8.9 0 0 0-6.4 2.7L1 10"/></svg> Rotate CCW</button>
+        <button class="btn btn-ghost btn-sm page-delete-selected" style="color:var(--danger);"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg> Delete Selected</button>
+        <span class="page-count-badge" id="split-page-count"></span>
+      </div>
+      <div id="split-pages-grid" class="page-thumb-grid"></div>
+      <div id="split-export-opts" class="tool-options hidden">
         <div class="tool-option-group">
-          <label class="tool-option-label">Split mode</label>
-          <div class="tool-radio-group">
-            <label class="tool-radio"><input type="radio" name="split-mode" value="all" checked> Extract all pages</label>
-            <label class="tool-radio"><input type="radio" name="split-mode" value="range"> Page range</label>
+          <label class="tool-option-label">Export as</label>
+          <div class="tool-radio-row">
+            <label class="tool-radio"><input type="radio" name="split-export-mode" value="zip" checked> ZIP (all pages)</label>
+            <label class="tool-radio"><input type="radio" name="split-export-mode" value="single"> Single PDF</label>
           </div>
         </div>
-        <div id="split-range-options" class="tool-option-group hidden">
-          <label class="tool-option-label">Pages (e.g., 1-3,5,7-9)</label>
-          <input type="text" id="split-range-input" class="text-input" placeholder="1-3,5,7-9">
+        <div id="split-range-opts" class="tool-option-group">
+          <label class="tool-option-label">Page range (optional, e.g. 1-3,5,7-9)</label>
+          <input type="text" id="split-range-input" class="text-input" placeholder="All pages if empty">
         </div>
-        <div id="split-pages-preview" class="tool-pages-preview"></div>
       </div>
       <div id="split-progress" class="tool-progress hidden">
         <div class="tool-progress-bar"><div id="split-progress-fill" class="tool-progress-fill"></div></div>
@@ -236,13 +226,17 @@
       </div>
     </div>
     <div class="tool-overlay-footer">
+      <div class="tool-output-name">
+        <input type="text" id="split-output-name" class="text-input" placeholder="Output name (optional)" style="font-size:13px;padding:8px 12px;">
+        <span class="tool-output-hint">Default: IstServices_(filename).pdf</span>
+      </div>
       <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
-      <button id="split-start" class="btn btn-primary" disabled>Split PDF</button>
+      <button id="split-start" class="btn btn-primary" disabled>Export</button>
     </div>
   </div>
 </div>
 
-<!-- Compress Overlay -->
+<!-- COMPRESS OVERLAY -->
 <div id="tool-overlay-compress" class="tool-overlay hidden">
   <div class="tool-overlay-panel">
     <div class="tool-overlay-header">
@@ -259,18 +253,18 @@
         <input type="file" id="compress-file-input" accept=".pdf,application/pdf" hidden>
       </div>
       <div id="compress-info" class="tool-options hidden">
-        <div class="tool-option-group">
-          <label class="tool-option-label">Compression level</label>
-          <div class="tool-compress-levels">
-            <button class="compress-level-btn active" data-level="medium">Medium</button>
-            <button class="compress-level-btn" data-level="high">High</button>
-            <button class="compress-level-btn" data-level="extreme">Extreme</button>
-          </div>
+        <div class="compression-stats-row">
+          <div class="compress-file-size"><span class="stat-label">Original</span><span id="compress-original-size" class="stat-value">-</span></div>
+          <div class="compress-file-size"><span class="stat-label">Estimated</span><span id="compress-estimated-size" class="stat-value">-</span></div>
+          <div class="compress-file-size"><span class="stat-label">You Save</span><span id="compress-savings" class="stat-value stat-save">-</span></div>
         </div>
-        <div id="compress-stats" class="tool-compress-stats">
-          <div class="compress-stat"><span class="compress-stat-label">Original</span><span id="compress-original-size" class="compress-stat-value">-</span></div>
-          <div class="compress-stat"><span class="compress-stat-label">Estimated</span><span id="compress-estimated-size" class="compress-stat-value">-</span></div>
-          <div class="compress-stat"><span class="compress-stat-label">Reduction</span><span id="compress-reduction" class="compress-stat-value">-</span></div>
+        <div class="tool-option-group">
+          <label class="tool-option-label">Compression Level</label>
+          <div class="tool-compress-levels">
+            <button class="compress-level-btn active" data-level="high" data-pct="100">High <small>100%</small></button>
+            <button class="compress-level-btn" data-level="medium" data-pct="50">Medium <small>50%</small></button>
+            <button class="compress-level-btn" data-level="low" data-pct="25">Low <small>25%</small></button>
+          </div>
         </div>
       </div>
       <div id="compress-progress" class="tool-progress hidden">
@@ -279,18 +273,95 @@
       </div>
     </div>
     <div class="tool-overlay-footer">
+      <div class="tool-output-name">
+        <input type="text" id="compress-output-name" class="text-input" placeholder="Output name (optional)" style="font-size:13px;padding:8px 12px;">
+        <span class="tool-output-hint">Default: IstServices_(filename).pdf</span>
+      </div>
       <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
       <button id="compress-start" class="btn btn-primary" disabled>Compress PDF</button>
     </div>
   </div>
 </div>
 
-<!-- PDF to Image Overlay -->
+<!-- IMAGE TO PDF OVERLAY -->
+<div id="tool-overlay-img2pdf" class="tool-overlay hidden">
+  <div class="tool-overlay-panel tool-panel-wide">
+    <div class="tool-overlay-header">
+      <h2 class="tool-overlay-title">Image to PDF</h2>
+      <p class="tool-overlay-desc">Convert images to a PDF document with advanced editing tools</p>
+      <button class="tool-overlay-close icon-btn" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="tool-overlay-body">
+      <div class="tool-dropzone" id="img2pdf-dropzone">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <p>Drop images here or click to upload</p>
+        <input type="file" id="img2pdf-file-input" accept="image/*" multiple hidden>
+      </div>
+      <div class="img2pdf-undo-bar hidden" id="img2pdf-undo-bar">
+        <button id="img2pdf-undo" class="btn btn-ghost btn-sm"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M3 10h13a4 4 0 0 1 0 8H7"/><polyline points="7 6 3 10 7 14"/></svg> Undo</button>
+        <button id="img2pdf-redo" class="btn btn-ghost btn-sm"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M21 10H8a4 4 0 0 0 0 8h9"/><polyline points="17 6 21 10 17 14"/></svg> Redo</button>
+      </div>
+      <div id="img2pdf-toolbar" class="page-toolbar hidden">
+        <button class="btn btn-ghost btn-sm img-rotate-cw-all"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.5 15.5A9 9 0 1 1 12 3a8.9 8.9 0 0 1 6.4 2.7L23 10"/></svg> Rotate All CW</button>
+        <button class="btn btn-ghost btn-sm img-rotate-ccw-all"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.5 15.5A9 9 0 1 0 12 3a8.9 8.9 0 0 0-6.4 2.7L1 10"/></svg> Rotate All CCW</button>
+        <button class="btn btn-ghost btn-sm img-delete-selected" style="color:var(--danger);"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg> Delete Selected</button>
+        <span class="page-count-badge" id="img2pdf-count"></span>
+      </div>
+      <!-- Image grid -->
+      <div id="img2pdf-grid" class="img-grid"></div>
+      <!-- Tool options (initially hidden) -->
+      <div id="img2pdf-options" class="tool-options hidden">
+        <div class="img-filter-section">
+          <div class="tool-option-group">
+            <label class="tool-option-label">Brightness</label>
+            <input type="range" id="img-filter-brightness" class="tool-range" min="0" max="200" value="100">
+          </div>
+          <div class="tool-option-group">
+            <label class="tool-option-label">Contrast</label>
+            <input type="range" id="img-filter-contrast" class="tool-range" min="0" max="200" value="100">
+          </div>
+          <div class="tool-option-group">
+            <label class="tool-option-label">Grayscale</label>
+            <button id="img-filter-grayscale" class="btn btn-ghost btn-sm">Apply Grayscale</button>
+          </div>
+        </div>
+        <div class="tool-option-group">
+          <label class="tool-option-label">Page size</label>
+          <select id="img2pdf-pagesize" class="text-input">
+            <option value="A4">A4</option>
+            <option value="Letter">Letter</option>
+            <option value="Fit">Fit image</option>
+          </select>
+        </div>
+        <button id="img2pdf-preview-btn" class="btn btn-ghost btn-sm">Preview PDF</button>
+      </div>
+      <div id="img2pdf-progress" class="tool-progress hidden">
+        <div class="tool-progress-bar"><div id="img2pdf-progress-fill" class="tool-progress-fill"></div></div>
+        <p id="img2pdf-progress-text" class="tool-progress-text">Converting...</p>
+      </div>
+      <div id="img2pdf-preview-wrap" class="img-preview-wrap hidden">
+        <iframe id="img2pdf-preview-frame" class="img-preview-frame" title="PDF Preview"></iframe>
+      </div>
+    </div>
+    <div class="tool-overlay-footer">
+      <div class="tool-output-name">
+        <input type="text" id="img2pdf-output-name" class="text-input" placeholder="Output name (optional)" style="font-size:13px;padding:8px 12px;">
+        <span class="tool-output-hint">Default: IstServices.pdf</span>
+      </div>
+      <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
+      <button id="img2pdf-start" class="btn btn-primary" disabled>Create PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF TO IMAGE OVERLAY -->
 <div id="tool-overlay-pdf2img" class="tool-overlay hidden">
   <div class="tool-overlay-panel">
     <div class="tool-overlay-header">
       <h2 class="tool-overlay-title">PDF to Image</h2>
-      <p class="tool-overlay-desc">Convert PDF pages to JPG or PNG images</p>
+      <p class="tool-overlay-desc">Convert PDF pages to high-quality JPG or PNG images</p>
       <button class="tool-overlay-close icon-btn" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button>
@@ -305,14 +376,14 @@
         <div class="tool-option-group">
           <label class="tool-option-label">Image format</label>
           <select id="pdf2img-format" class="text-input">
-            <option value="image/jpeg">JPG</option>
+            <option value="image/jpeg">JPG (JPEG)</option>
             <option value="image/png">PNG</option>
           </select>
         </div>
         <div class="tool-option-group">
-          <label class="tool-option-label">Scale (%)</label>
-          <input type="range" id="pdf2img-scale" class="tool-range" min="50" max="300" value="150">
-          <span id="pdf2img-scale-value" class="tool-range-value">150%</span>
+          <label class="tool-option-label">Quality (%)</label>
+          <input type="range" id="pdf2img-scale" class="tool-range" min="50" max="400" value="200">
+          <span id="pdf2img-scale-value" class="tool-range-value">200%</span>
         </div>
       </div>
       <div id="pdf2img-progress" class="tool-progress hidden">
@@ -321,97 +392,17 @@
       </div>
     </div>
     <div class="tool-overlay-footer">
+      <div class="tool-output-name">
+        <input type="text" id="pdf2img-output-name" class="text-input" placeholder="Output name (optional)" style="font-size:13px;padding:8px 12px;">
+        <span class="tool-output-hint">Default: IstServices_(filename)</span>
+      </div>
       <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
       <button id="pdf2img-start" class="btn btn-primary" disabled>Convert to Images</button>
     </div>
   </div>
 </div>
 
-<!-- Image to PDF Overlay -->
-<div id="tool-overlay-img2pdf" class="tool-overlay hidden">
-  <div class="tool-overlay-panel">
-    <div class="tool-overlay-header">
-      <h2 class="tool-overlay-title">Image to PDF</h2>
-      <p class="tool-overlay-desc">Convert images (JPG, PNG) to a PDF document</p>
-      <button class="tool-overlay-close icon-btn" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="tool-overlay-body">
-      <div class="tool-dropzone" id="img2pdf-dropzone">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <p>Drop images here or click to upload</p>
-        <input type="file" id="img2pdf-file-input" accept="image/*" multiple hidden>
-      </div>
-      <div id="img2pdf-file-list" class="tool-file-list"></div>
-      <div id="img2pdf-options" class="tool-options hidden">
-        <div class="tool-option-group">
-          <label class="tool-option-label">Page size</label>
-          <select id="img2pdf-pagesize" class="text-input">
-            <option value="A4">A4</option>
-            <option value="Letter">Letter</option>
-            <option value="Fit">Fit image</option>
-          </select>
-        </div>
-      </div>
-      <div id="img2pdf-progress" class="tool-progress hidden">
-        <div class="tool-progress-bar"><div id="img2pdf-progress-fill" class="tool-progress-fill"></div></div>
-        <p id="img2pdf-progress-text" class="tool-progress-text">Converting...</p>
-      </div>
-    </div>
-    <div class="tool-overlay-footer">
-      <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
-      <button id="img2pdf-start" class="btn btn-primary" disabled>Create PDF</button>
-    </div>
-  </div>
-</div>
-
-<!-- Organize Overlay -->
-<div id="tool-overlay-organize" class="tool-overlay hidden">
-  <div class="tool-overlay-panel">
-    <div class="tool-overlay-header">
-      <h2 class="tool-overlay-title">Organize PDF</h2>
-      <p class="tool-overlay-desc">Reorder, rotate, and delete pages</p>
-      <button class="tool-overlay-close icon-btn" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="tool-overlay-body">
-      <div class="tool-dropzone" id="organize-dropzone">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <p>Drop a PDF file here or click to upload</p>
-        <input type="file" id="organize-file-input" accept=".pdf,application/pdf" hidden>
-      </div>
-      <div id="organize-editor" class="tool-options hidden">
-        <div class="organize-toolbar">
-          <button id="organize-rotate-cw" class="btn btn-ghost btn-sm" title="Rotate Clockwise">
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="1.8"><path d="M1 4v6h6"/><path d="M3.5 15.5A9 9 0 1 0 12 3a8.9 8.9 0 0 0-6.4 2.7L1 10"/></svg>
-            Rotate CW
-          </button>
-          <button id="organize-rotate-ccw" class="btn btn-ghost btn-sm" title="Rotate Counter-Clockwise">
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="1.8"><path d="M23 4v6h-6"/><path d="M20.5 15.5A9 9 0 1 1 12 3a8.9 8.9 0 0 1 6.4 2.7L23 10"/></svg>
-            Rotate CCW
-          </button>
-          <button id="organize-delete" class="btn btn-ghost btn-sm" style="color:var(--danger);" title="Delete Selected">
-            <svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
-            Delete
-          </button>
-        </div>
-        <div id="organize-pages-grid" class="organize-pages-grid"></div>
-      </div>
-      <div id="organize-progress" class="tool-progress hidden">
-        <div class="tool-progress-bar"><div id="organize-progress-fill" class="tool-progress-fill"></div></div>
-        <p id="organize-progress-text" class="tool-progress-text">Processing...</p>
-      </div>
-    </div>
-    <div class="tool-overlay-footer">
-      <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
-      <button id="organize-start" class="btn btn-primary" disabled>Apply Changes</button>
-    </div>
-  </div>
-</div>
-
-<!-- Protect Overlay -->
+<!-- PROTECT OVERLAY -->
 <div id="tool-overlay-protect" class="tool-overlay hidden">
   <div class="tool-overlay-panel">
     <div class="tool-overlay-header">
@@ -450,7 +441,7 @@
   </div>
 </div>
 
-<!-- Unlock Overlay -->
+<!-- UNLOCK OVERLAY -->
 <div id="tool-overlay-unlock" class="tool-overlay hidden">
   <div class="tool-overlay-panel">
     <div class="tool-overlay-header">
@@ -485,7 +476,7 @@
   </div>
 </div>
 
-<!-- Watermark Overlay -->
+<!-- WATERMARK OVERLAY -->
 <div id="tool-overlay-watermark" class="tool-overlay hidden">
   <div class="tool-overlay-panel">
     <div class="tool-overlay-header">
@@ -533,7 +524,7 @@
   </div>
 </div>
 
-<!-- Page Numbers Overlay -->
+<!-- PAGE NUMBERS OVERLAY -->
 <div id="tool-overlay-pagenum" class="tool-overlay hidden">
   <div class="tool-overlay-panel">
     <div class="tool-overlay-header">
@@ -578,6 +569,6 @@
   </div>
 </div>
 
-<script type="module" src="js/pdftools.js?v=1"></script>
+<script type="module" src="js/pdftools.js?v=2"></script>
 </body>
 </html>
