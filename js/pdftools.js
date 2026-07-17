@@ -5,7 +5,22 @@
    All files are processed locally — nothing leaves your device.
    =========================================================== */
 
-import { showToast } from './shared.js';
+/* Local toast — no Firebase dependency needed for PDF Tools */
+let _toastTimer = null;
+function toast(msg, type = '') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  container.appendChild(el);
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => {
+    el.style.transition = 'opacity 200ms ease';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 220);
+  }, 2600);
+}
 
 /* ---- Constants ---- */
 const PDFLIB_URL = 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js';
@@ -62,8 +77,6 @@ function parseRange(input, total) {
   }
   return s.size ? [...s].sort((a,b)=>a-b) : null;
 }
-
-function toast(msg, type = '') { showToast(msg, type); }
 
 function defaultFilename(original, suffix = '') {
   const base = original.replace(/\.pdf$/i, '').replace(/[^a-zA-Z0-9_\-]/g, '_');
@@ -127,8 +140,6 @@ class UndoRedoManager {
 /* ===========================================================
    Thumbnail / Page Helpers
    =========================================================== */
-let _thumbCache = {};
-
 const _thumbCache = {};
 const THUMB_BATCH_SIZE = 4; // Pages to render before yielding to main thread
 
@@ -1544,9 +1555,6 @@ function initProtectTool() {
 }
 
 /* ===========================================================
-   UNLOCK PDF
-   =========================================================== */
-/* ===========================================================
    WATERMARK PDF
    =========================================================== */
 function initWatermarkTool() {
@@ -1648,20 +1656,22 @@ function initPageNumTool() {
 const _toolFiles = {};
 
 function setupDropzoneSimple(prefix, onFile) {
-  const dz = document.getElementById(`${prefix}-dropzone`);
-  const inp = document.getElementById(`${prefix}-file-input`);
-  if (!dz || !inp) return;
-  dz.addEventListener('click', () => inp.click());
-  inp.addEventListener('change', () => {
-    const files = Array.from(inp.files);
-    if (files.length) { _toolFiles[prefix] = files[0]; if (onFile) onFile(); }
-  });
-  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
-  dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
-  dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over');
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length) { _toolFiles[prefix] = files[0]; if (onFile) onFile(); }
-  });
+  try {
+    const dz = document.getElementById(`${prefix}-dropzone`);
+    const inp = document.getElementById(`${prefix}-file-input`);
+    if (!dz || !inp) { console.warn('Dropzone not found:', prefix); return; }
+    dz.addEventListener('click', () => inp.click());
+    inp.addEventListener('change', () => {
+      const files = Array.from(inp.files);
+      if (files.length) { _toolFiles[prefix] = files[0]; if (onFile) onFile(); }
+    });
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length) { _toolFiles[prefix] = files[0]; if (onFile) onFile(); }
+    });
+  } catch (e) { console.warn('setupDropzoneSimple error:', prefix, e); }
 }
 
 
@@ -1722,7 +1732,9 @@ function resetTool(prefix) {
 function init() {
   /* Tool cards → overlay */
   document.querySelectorAll('.pdf-tool-card').forEach(card => {
-    card.addEventListener('click', () => openOverlay(card.dataset.tool));
+    card.addEventListener('click', () => {
+      try { openOverlay(card.dataset.tool); } catch (e) { console.error('Card click:', e); }
+    });
   });
 
   /* Overlay close buttons */
@@ -1766,15 +1778,17 @@ function init() {
     }
   });
 
-  /* Init all tools */
-  initMergeTool();
-  initSplitTool();
-  initCompressTool();
-  initImg2PdfTool();
-  initPdf2ImgTool();
-  initProtectTool();
-  initWatermarkTool();
-  initPageNumTool();
+  /* Init all tools — each wrapped to prevent one failure from breaking others */
+  try { initMergeTool(); } catch (e) { console.error('Merge init:', e); }
+  try { initSplitTool(); } catch (e) { console.error('Split init:', e); }
+  try { initCompressTool(); } catch (e) { console.error('Compress init:', e); }
+  try { initImg2PdfTool(); } catch (e) { console.error('Img2Pdf init:', e); }
+  try { initPdf2ImgTool(); } catch (e) { console.error('Pdf2Img init:', e); }
+  try { initProtectTool(); } catch (e) { console.error('Protect init:', e); }
+  try { initWatermarkTool(); } catch (e) { console.error('Watermark init:', e); }
+  try { initPageNumTool(); } catch (e) { console.error('PageNum init:', e); }
 }
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+  try { init(); } catch (e) { console.error('PDF Tools init failed:', e); }
+});
