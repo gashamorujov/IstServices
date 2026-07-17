@@ -129,7 +129,16 @@ class UndoRedoManager {
    =========================================================== */
 let _thumbCache = {};
 
-async function renderThumbnail(pdfData, pageNum, scale = 0.5) {
+const _thumbCache = {};
+const THUMB_BATCH_SIZE = 4; // Pages to render before yielding to main thread
+
+/* Yield to main thread via requestAnimationFrame */
+function yieldToMain() {
+  return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+}
+
+/* Render a single page thumbnail (used by batch processor) */
+async function renderSingleThumbnail(pdfData, pageNum, scale = 0.5) {
   const key = pdfData + '_' + pageNum + '_' + scale;
   if (_thumbCache[key]) return _thumbCache[key];
   await pdfjs();
@@ -145,32 +154,62 @@ async function renderThumbnail(pdfData, pageNum, scale = 0.5) {
   return dataUrl;
 }
 
-function clearThumbCache() { _thumbCache = {}; }
-
-/* Non-blocking async thumbnail renderer — renders in background,
-   updates the page item when done, doesn't block UI */
-function renderThumbnailAsync(pdfData, pageNum, pagesArray, index, scale = 0.5) {
-  // Set a placeholder immediately
-  pagesArray[index].thumbnail = null;
-  pagesArray[index]._loading = true;
+/* Batched async thumbnail renderer — renders in small batches,
+   yields to main thread between each batch so UI never freezes.
+   Calls onProgress callback after each page completes. */
+async function renderThumbnailsBatched(pdfData, totalPages, scale = 0.5, onProgress = null) {
+  const results = new Array(totalPages).fill(null);
+  let renderedCount = 0;
   
-  // Render asynchronously without await
-  renderThumbnail(pdfData, pageNum, scale).then(dataUrl => {
-    pagesArray[index].thumbnail = dataUrl;
-    pagesArray[index]._loading = false;
-    // Trigger re-render if this page's container exists
-    const grid = document.querySelector('.page-thumb-grid:not(.hidden)');
-    if (grid) {
-      const items = grid.querySelectorAll('.page-thumb-item');
-      if (items[index]) {
-        const img = items[index].querySelector('img');
-        if (img) img.src = dataUrl;
-      }
+  // Render first 2 pages immediately for instant feedback
+  const urgentCount = Math.min(2, totalPages);
+  for (let i = 0; i < urgentCount; i++) {
+    try {
+      results[i] = await renderSingleThumbnail(pdfData, i + 1, scale);
+      renderedCount++;
+      if (onProgress) onProgress(i, totalPages, results[i]);
+    } catch (err) {
+      console.warn('Thumbnail render failed for page', i + 1, err);
     }
-  }).catch(err => {
-    console.warn('Thumbnail render failed for page', pageNum, err);
-    pagesArray[index]._loading = false;
-  });
+  }
+  
+  // Render remaining pages in batches, yielding between each batch
+  for (let i = urgentCount; i < totalPages; i += THUMB_BATCH_SIZE) {
+    await yieldToMain(); // Let UI breathe
+    
+    const batchEnd = Math.min(i + THUMB_BATCH_SIZE, totalPages);
+    const batchPromises = [];
+    
+    for (let j = i; j < batchEnd; j++) {
+      batchPromises.push(
+        renderSingleThumbnail(pdfData, j + 1, scale)
+          .then(dataUrl => { results[j] = dataUrl; renderedCount++; if (onProgress) onProgress(j, totalPages, dataUrl); return dataUrl; })
+          .catch(err => { console.warn('Thumbnail render failed for page', j + 1, err); renderedCount++; return null; })
+      );
+    }
+    
+    await Promise.all(batchPromises);
+  }
+  
+  return results;
+}
+
+/* Legacy helper — renders a single thumbnail with cache */
+async function renderThumbnail(pdfData, pageNum, scale = 0.5) {
+  return renderSingleThumbnail(pdfData, pageNum, scale);
+}
+
+function clearThumbCache() { 
+  for (const k in _thumbCache) delete _thumbCache[k];
+}
+
+/* Debounce — limits how often a function can fire */
+function debounce(fn, ms = 100) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
 }
 
 /* Create a page item descriptor for a single page */
@@ -357,11 +396,37 @@ function initSplitTool() {
       for (let i = 0; i < total; i++) {
         pdfEntry.pages.push(makePageItem(pdfFiles.length, i + 1, 0, `Page ${i+1}`));
       }
-      // Generate thumbnails
+      // Generate thumbnails with batched rendering (no UI freeze)
       toast(`Loading ${total} pages from ${file.name}...`);
-      for (let i = 0; i < total; i++) {
-        renderThumbnailAsync(data, i + 1, pdfEntry.pages, i);
-      }
+      // Don't await — let batches yield to main thread
+      renderThumbnailsBatched(data, total, 0.5, (pageIdx, totalPgs, dataUrl) => {
+        if (dataUrl && pdfEntry.pages[pageIdx]) {
+          pdfEntry.pages[pageIdx].thumbnail = dataUrl;
+          // Update individual thumbnail in DOM if visible
+          const grid = document.getElementById('split-pages-grid');
+          if (grid) {
+            const items = grid.querySelectorAll('.page-thumb-item');
+            if (items[pageIdx]) {
+              const wrap = items[pageIdx].querySelector('.page-thumb-img-wrap');
+              if (wrap) {
+                const existing = wrap.querySelector('img');
+                if (existing) { existing.src = dataUrl; }
+                else {
+                  const img = document.createElement('img');
+                  img.src = dataUrl;
+                  img.alt = 'Page ' + (pageIdx + 1);
+                  img.loading = 'lazy';
+                  if (pdfEntry.pages[pageIdx]?.rotation) {
+                    img.style.transform = 'rotate(' + pdfEntry.pages[pageIdx].rotation + 'deg)';
+                  }
+                  wrap.innerHTML = '';
+                  wrap.appendChild(img);
+                }
+              }
+            }
+          }
+        }
+      });
       pdfFiles.push(pdfEntry);
     }
     undo.reset();
@@ -492,22 +557,28 @@ function initMergeTool() {
   let undo;
 
   function getState() {
-    return pdfFiles.map(f => ({
+    return pdfFiles.map((f, fi) => ({
       name: f.file.name,
+      index: fi,
       pages: f.pages.map(p => ({ pageNum: p.pageNum, rotation: p.rotation, selected: p.selected, label: p.label })),
       expanded: f.expanded
     }));
   }
   function applyState(state) {
+    // Store references to current files for data recovery
+    const fileMap = {};
+    pdfFiles.forEach((f, fi) => { fileMap[f.file.name] = { file: f.file, data: f.data, pages: f.pages }; });
+    
     pdfFiles = state.map(s => {
-      const ex = pdfFiles.find(e => e.file.name === s.name);
+      const ex = fileMap[s.name];
       return {
         file: ex ? ex.file : null,
         data: ex ? ex.data : null,
         expanded: s.expanded,
-        pages: s.pages.map((p, i) => ({
-          ...p, thumbnail: ex && ex.pages[i] ? ex.pages[i].thumbnail : null
-        }))
+        pages: s.pages.map((p, i) => {
+          const thumb = ex && ex.pages[i] ? ex.pages[i].thumbnail : null;
+          return { ...p, thumbnail: thumb };
+        })
       };
     });
     renderMergeCards();
@@ -556,6 +627,10 @@ function initMergeTool() {
     el.querySelectorAll('.card-remove').forEach(b => {
       b.addEventListener('click', (e) => { e.stopPropagation(); removePdf(parseInt(b.dataset.pdf, 10)); });
     });
+    /* After each card re-render, enable undo bar if there's history */
+    const undoBar = document.getElementById('merge-undo-bar');
+    if (undoBar) undoBar.classList.toggle('hidden', pdfFiles.length === 0);
+    if (undo && pdfFiles.length > 0) { undo._sync(); }
 
     /* Render page grids inside expanded cards */
     pdfFiles.forEach((f, fi) => {
@@ -814,14 +889,22 @@ function initImg2PdfTool() {
   async function handleImgFiles(files) {
     const imgs = files.filter(f => f.type.startsWith('image/'));
     if (!imgs.length) { toast('Please select image files', 'error'); return; }
-    for (const file of imgs) {
-      const data = await file.arrayBuffer();
-      const dataUrl = URL.createObjectURL(file);
-      images.push({
-        file, data, dataUrl,
-        rotation: 0, selected: false,
-        filter: 'original', crop: null
-      });
+    const batchSize = 5;
+    for (let i = 0; i < imgs.length; i += batchSize) {
+      const batch = imgs.slice(i, i + batchSize);
+      for (const file of batch) {
+        const data = await file.arrayBuffer();
+        const dataUrl = URL.createObjectURL(file);
+        images.push({
+          file, data, dataUrl,
+          rotation: 0, selected: false,
+          filter: 'original', crop: null
+        });
+      }
+      // Yield to main thread after each batch
+      if (i + batchSize < imgs.length) {
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+      }
     }
     undo.reset();
     undo.push(getState());
