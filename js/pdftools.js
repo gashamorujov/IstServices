@@ -129,7 +129,7 @@ class UndoRedoManager {
    =========================================================== */
 let _thumbCache = {};
 
-async function renderThumbnail(pdfData, pageNum, scale = 0.3) {
+async function renderThumbnail(pdfData, pageNum, scale = 0.5) {
   const key = pdfData + '_' + pageNum + '_' + scale;
   if (_thumbCache[key]) return _thumbCache[key];
   await pdfjs();
@@ -140,12 +140,38 @@ async function renderThumbnail(pdfData, pageNum, scale = 0.3) {
   c.width = vp.width;
   c.height = vp.height;
   await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-  const dataUrl = c.toDataURL('image/jpeg', 0.85);
+  const dataUrl = c.toDataURL('image/jpeg', 0.92);
   _thumbCache[key] = dataUrl;
   return dataUrl;
 }
 
 function clearThumbCache() { _thumbCache = {}; }
+
+/* Non-blocking async thumbnail renderer — renders in background,
+   updates the page item when done, doesn't block UI */
+function renderThumbnailAsync(pdfData, pageNum, pagesArray, index, scale = 0.5) {
+  // Set a placeholder immediately
+  pagesArray[index].thumbnail = null;
+  pagesArray[index]._loading = true;
+  
+  // Render asynchronously without await
+  renderThumbnail(pdfData, pageNum, scale).then(dataUrl => {
+    pagesArray[index].thumbnail = dataUrl;
+    pagesArray[index]._loading = false;
+    // Trigger re-render if this page's container exists
+    const grid = document.querySelector('.page-thumb-grid:not(.hidden)');
+    if (grid) {
+      const items = grid.querySelectorAll('.page-thumb-item');
+      if (items[index]) {
+        const img = items[index].querySelector('img');
+        if (img) img.src = dataUrl;
+      }
+    }
+  }).catch(err => {
+    console.warn('Thumbnail render failed for page', pageNum, err);
+    pagesArray[index]._loading = false;
+  });
+}
 
 /* Create a page item descriptor for a single page */
 function makePageItem(pdfIndex, pageNum, rotation = 0, label = null) {
@@ -167,12 +193,12 @@ function renderPageGrid(container, pages, options = {}) {
     <div class="${cls}${p.selected ? ' selected' : ''}" data-idx="${i}" draggable="true">
       ${showCheck ? `<div class="page-thumb-check">${p.selected ? '✓' : ''}</div>` : ''}
       ${showActions ? `
-      <div class="page-thumb-actions">
-        <button class="page-thumb-action rot-cw" data-idx="${i}" title="Rotate CW">↻</button>
-        <button class="page-thumb-action rot-ccw" data-idx="${i}" title="Rotate CCW">↺</button>
-        <button class="page-thumb-action del" data-idx="${i}" title="Delete">✕</button>
-      </div>` : ''}
-      ${p.thumbnail ? `<img src="${p.thumbnail}" alt="Page ${p.pageNum}" loading="lazy"${p.rotation ? ' style="transform:rotate('+p.rotation+'deg)"' : ''}>` : '<div style="padding:20px;text-align:center;color:var(--ink-faint);font-size:11px;">Loading...</div>'}
+      <button class="page-thumb-btn page-thumb-del" data-idx="${i}" title="Delete this page">✕</button>
+      <button class="page-thumb-btn page-thumb-rot-cw" data-idx="${i}" title="Rotate CW">↻</button>
+      <button class="page-thumb-btn page-thumb-rot-ccw" data-idx="${i}" title="Rotate CCW">↺</button>` : ''}
+      <div class="page-thumb-img-wrap">
+        ${p.thumbnail ? `<img src="${p.thumbnail}" alt="Page ${p.pageNum}" loading="lazy"${p.rotation ? ' style="transform:rotate('+p.rotation+'deg)"' : ''}>` : '<div class="page-thumb-placeholder">' + (p._loading ? '<span class="thumb-spinner"></span>' : 'Page ' + (p.pageNum || '')) + '</div>'}
+      </div>
       <div class="page-thumb-label">${p.label || p.pageNum}</div>
     </div>
   `).join('');
@@ -202,9 +228,9 @@ function renderPageGrid(container, pages, options = {}) {
   });
 
   /* Rotate/Delete buttons */
-  el.querySelectorAll('.rot-cw').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onRotateCW) onRotateCW(parseInt(b.dataset.idx, 10)); }));
-  el.querySelectorAll('.rot-ccw').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onRotateCCW) onRotateCCW(parseInt(b.dataset.idx, 10)); }));
-  el.querySelectorAll('.del').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onDelete) onDelete(parseInt(b.dataset.idx, 10)); }));
+  el.querySelectorAll('.page-thumb-rot-cw').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onRotateCW) onRotateCW(parseInt(b.dataset.idx, 10)); }));
+  el.querySelectorAll('.page-thumb-rot-ccw').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onRotateCCW) onRotateCCW(parseInt(b.dataset.idx, 10)); }));
+  el.querySelectorAll('.page-thumb-del').forEach(b => b.addEventListener('click', (e) => { e.stopPropagation(); if (onDelete) onDelete(parseInt(b.dataset.idx, 10)); }));
 }
 
 /* ===========================================================
@@ -334,7 +360,7 @@ function initSplitTool() {
       // Generate thumbnails
       toast(`Loading ${total} pages from ${file.name}...`);
       for (let i = 0; i < total; i++) {
-        pdfEntry.pages[i].thumbnail = await renderThumbnail(data, i + 1, 0.25);
+        renderThumbnailAsync(data, i + 1, pdfEntry.pages, i);
       }
       pdfFiles.push(pdfEntry);
     }
@@ -598,7 +624,7 @@ function initMergeTool() {
       // Generate thumbnails
       toast(`Loading ${file.name}...`);
       for (let i = 0; i < total; i++) {
-        entry.pages[i].thumbnail = await renderThumbnail(data, i + 1, 0.2);
+        renderThumbnailAsync(data, i + 1, entry.pages, i);
       }
       pdfFiles.push(entry);
     }
@@ -692,7 +718,11 @@ function initImg2PdfTool() {
       const cropStyle = img.crop ? `;clip-path:inset(${img.crop.t*100}% ${(1-img.crop.r)*100}% ${(1-img.crop.b)*100}% ${img.crop.l*100}%)` : '';
       return `<div class="img-grid-item${img.selected ? ' selected' : ''}" data-idx="${i}" draggable="true">
         <div class="img-check">${img.selected ? '✓' : ''}</div>
-        <img src="${img.dataUrl}" alt="${img.file.name}" style="transform:rotate(${rot}deg);filter:${filterCss}${cropStyle}">
+        <button class="img-rot-btn page-thumb-rot-cw" data-idx="${i}" title="Rotate CW">↻</button>
+        <button class="img-rot-btn page-thumb-rot-ccw" data-idx="${i}" title="Rotate CCW">↺</button>
+        <div class="img-thumb-wrap">
+          <img src="${img.dataUrl}" alt="${img.file.name}" style="transform:rotate(${rot}deg);filter:${filterCss}${cropStyle}">
+        </div>
         <div class="img-label">${img.file.name.substring(0, 15)}</div>
       </div>`;
     }).join('');
@@ -700,8 +730,25 @@ function initImg2PdfTool() {
     el.querySelectorAll('.img-grid-item').forEach(item => {
       const idx = parseInt(item.dataset.idx, 10);
       item.addEventListener('click', (e) => {
-        // Show large preview on click
+        if (e.target.closest('.page-thumb-rot-cw') || e.target.closest('.page-thumb-rot-ccw')) return;
         showImagePreview(idx);
+      });
+      // Rotate buttons
+      item.querySelector('.page-thumb-rot-cw')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        images[idx].rotation = (images[idx].rotation || 0) + 90;
+        if (selectedImgIdx === idx) {
+          document.getElementById('img2pdf-preview-img').style.transform = 'rotate('+images[idx].rotation+'deg)';
+        }
+        undo.push(getState()); renderImageGrid();
+      });
+      item.querySelector('.page-thumb-rot-ccw')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        images[idx].rotation = (images[idx].rotation || 0) - 90;
+        if (selectedImgIdx === idx) {
+          document.getElementById('img2pdf-preview-img').style.transform = 'rotate('+images[idx].rotation+'deg)';
+        }
+        undo.push(getState()); renderImageGrid();
       });
       item.addEventListener('dragstart', (e) => {
         e.dataTransfer.effectAllowed = 'move';
@@ -1416,36 +1463,6 @@ function initProtectTool() {
 /* ===========================================================
    UNLOCK PDF
    =========================================================== */
-function initUnlockTool() {
-  setupDropzoneSimple('unlock', () => {
-    document.getElementById('unlock-options').classList.remove('hidden');
-    document.getElementById('unlock-start').disabled = false;
-  });
-  document.getElementById('unlock-start').addEventListener('click', async () => {
-    const pass = document.getElementById('unlock-password').value;
-    const err = document.getElementById('unlock-error');
-    if (!pass) { err.textContent = 'Please enter the password'; err.classList.remove('hidden'); return; }
-    err.classList.add('hidden');
-    document.getElementById('unlock-start').disabled = true;
-    document.getElementById('unlock-progress').classList.remove('hidden');
-    try {
-      await pdflib();
-      const pf = _toolFiles['unlock'];
-      if (!pf) { toast('No file selected', 'error'); document.getElementById('unlock-start').disabled = false; return; }
-      const buf = await pf.arrayBuffer();
-      const doc = await PDFLib.PDFDocument.load(buf, { password: pass });
-      const bytes = await doc.save();
-      dlBlob(new Blob([bytes], {type:'application/pdf'}), pf.name.replace('.pdf','-unlocked.pdf'));
-      toast('PDF unlocked!', 'success');
-      resetTool('unlock');
-    } catch (e) {
-      if (e.message.includes('password')) { err.textContent = 'Incorrect password'; err.classList.remove('hidden'); }
-      else toast('Failed: '+e.message, 'error');
-    }
-    finally { document.getElementById('unlock-start').disabled = false; setTimeout(() => document.getElementById('unlock-progress').classList.add('hidden'), 2000); }
-  });
-}
-
 /* ===========================================================
    WATERMARK PDF
    =========================================================== */
@@ -1569,12 +1586,7 @@ function setupDropzoneSimple(prefix, onFile) {
 /* ===========================================================
    Overlay Management
    =========================================================== */
-const TOOLS = ['merge','split','compress','img2pdf','pdf2img','protect','unlock','watermark','pagenum'];
-const TOOL_START_BTNS = {
-  protect: 'protect-start', unlock: 'unlock-start',
-  watermark: 'watermark-start', pagenum: 'pagenum-start'
-};
-
+const TOOLS = ['merge','split','compress','img2pdf','pdf2img','protect','watermark','pagenum'];
 function openOverlay(tool) {
   const o = document.getElementById(`tool-overlay-${tool}`);
   if (o) o.classList.remove('hidden');
@@ -1678,7 +1690,6 @@ function init() {
   initImg2PdfTool();
   initPdf2ImgTool();
   initProtectTool();
-  initUnlockTool();
   initWatermarkTool();
   initPageNumTool();
 }

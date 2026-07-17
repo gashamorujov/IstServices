@@ -307,18 +307,22 @@ let mergeSearchTerm = "";
 let pendingMerge = null; // { bytes, outputName, previewUrl, listenerIds, listenerNames, skipped }
 
 function openMergeOverlay() {
-  mergeSelectedIds.clear();
-  mergeSearchTerm = "";
-  if (mergeSearch) mergeSearch.value = "";
-  discardPendingMerge();
+  // Preserve state if coming back from accidental close
+  if (!mergeOverlay.classList.contains("hidden")) return;
+  // Only reset if there's no saved state
+  if (mergeSelectedIds.size === 0) {
+    mergeSearchTerm = "";
+    if (mergeSearch) mergeSearch.value = "";
+  }
   showMergeStep(1);
   renderMergeListeners();
+  updateMergeSelectedCount();
   mergeOverlay.classList.remove("hidden");
 }
 
 function closeMergeOverlay() {
+  // Preserve state on accidental close — selections survive
   mergeOverlay.classList.add("hidden");
-  discardPendingMerge();
 }
 
 function discardPendingMerge() {
@@ -391,6 +395,17 @@ function updateMergeSelectedCount() {
   if (mergeNextBtn) {
     mergeNextBtn.disabled = count === 0;
   }
+}
+
+/* Clear all merge state and reset the panel */
+function clearAllMergeState() {
+  mergeSelectedIds.clear();
+  mergeSearchTerm = "";
+  if (mergeSearch) mergeSearch.value = "";
+  discardPendingMerge();
+  showMergeStep(1);
+  renderMergeListeners();
+  updateMergeSelectedCount();
 }
 
 // Search handler
@@ -636,6 +651,12 @@ if (mergeDownloadBtn) {
 // Close handlers
 if (mergeClose) mergeClose.addEventListener("click", closeMergeOverlay);
 if (mergeOverlay) mergeOverlay.addEventListener("click", (e) => { if (e.target === mergeOverlay) closeMergeOverlay(); });
+
+/* Clear All button */
+const mergeClearAllBtn = document.getElementById("merge-clear-all");
+if (mergeClearAllBtn) {
+  mergeClearAllBtn.addEventListener("click", clearAllMergeState);
+}
 if (mergeCloseDoneBtn) mergeCloseDoneBtn.addEventListener("click", closeMergeOverlay);
 
 // "Bax" in step 5 — open the merged PDF in the preview overlay

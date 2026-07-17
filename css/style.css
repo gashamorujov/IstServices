@@ -3057,6 +3057,27 @@ html[data-theme="blue"] .merge-progress-bar-track{ background: #c8daf0; }
   height: 16px;
   flex-shrink: 0;
 }
+.merge-clear-all-btn {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 5px 10px !important;
+  color: var(--danger-light) !important;
+  border-color: rgba(217,79,70,0.3) !important;
+  margin-left: auto;
+  margin-right: 8px;
+  white-space: nowrap;
+  background: transparent !important;
+}
+.merge-clear-all-btn:hover {
+  background: rgba(217,79,70,0.1) !important;
+  border-color: var(--danger-light) !important;
+}
+@media (max-width: 600px) {
+  .merge-clear-all-btn span { display: none; }
+}
+
 @media (max-width: 768px){
   .pdf-tools-btn-text{ display: none; }
   .pdf-tools-header-btn{ padding: 8px 10px; }

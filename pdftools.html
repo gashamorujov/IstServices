@@ -101,14 +101,6 @@
       <p class="pdf-tool-desc">Add password protection to your PDF</p>
     </button>
 
-    <!-- Unlock PDF -->
-    <button class="pdf-tool-card" data-tool="unlock" aria-label="Unlock PDF">
-      <div class="pdf-tool-icon" style="background:linear-gradient(135deg,#a8edea 0%,#fed6e3 100%);box-shadow:0 6px 20px rgba(168,237,234,0.35);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><path d="M12 16v2"/></svg>
-      </div>
-      <h3 class="pdf-tool-name">Unlock PDF</h3>
-      <p class="pdf-tool-desc">Remove password protection from PDF</p>
-    </button>
 
     <!-- Watermark PDF -->
     <button class="pdf-tool-card" data-tool="watermark" aria-label="Watermark PDF">
@@ -457,41 +449,6 @@
     <div class="tool-overlay-footer">
       <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
       <button id="protect-start" class="btn btn-primary" disabled>Protect PDF</button>
-    </div>
-  </div>
-</div>
-
-<!-- UNLOCK OVERLAY -->
-<div id="tool-overlay-unlock" class="tool-overlay hidden">
-  <div class="tool-overlay-panel">
-    <div class="tool-overlay-header">
-      <h2 class="tool-overlay-title">Unlock PDF</h2>
-      <p class="tool-overlay-desc">Remove password protection from a PDF</p>
-      <button class="tool-overlay-close icon-btn" aria-label="Close">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M6 6L18 18M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-    <div class="tool-overlay-body">
-      <div class="tool-dropzone" id="unlock-dropzone">
-        <svg viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <p>Drop a protected PDF here or click to upload</p>
-        <input type="file" id="unlock-file-input" accept=".pdf,application/pdf" hidden>
-      </div>
-      <div id="unlock-options" class="tool-options hidden">
-        <div class="tool-option-group">
-          <label class="tool-option-label">Password</label>
-          <input type="password" id="unlock-password" class="text-input" placeholder="Enter document password" autocomplete="off">
-        </div>
-        <p id="unlock-error" class="tool-error hidden"></p>
-      </div>
-      <div id="unlock-progress" class="tool-progress hidden">
-        <div class="tool-progress-bar"><div id="unlock-progress-fill" class="tool-progress-fill"></div></div>
-        <p id="unlock-progress-text" class="tool-progress-text">Unlocking...</p>
-      </div>
-    </div>
-    <div class="tool-overlay-footer">
-      <button class="btn btn-ghost tool-cancel-btn">Cancel</button>
-      <button id="unlock-start" class="btn btn-primary" disabled>Unlock PDF</button>
     </div>
   </div>
 </div>
