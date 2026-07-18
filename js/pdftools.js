@@ -15,11 +15,13 @@ function toast(msg, type = '') {
   el.textContent = msg;
   container.appendChild(el);
   clearTimeout(_toastTimer);
+  // Auto-close after 1s with smooth animation
   _toastTimer = setTimeout(() => {
-    el.style.transition = 'opacity 200ms ease';
+    el.style.transition = 'opacity 300ms ease, transform 300ms ease';
+    el.style.transform = 'translateY(-10px)';
     el.style.opacity = '0';
     setTimeout(() => el.remove(), 220);
-  }, 2600);
+  }, 1000);
 }
 
 /* ---- Constants ---- */

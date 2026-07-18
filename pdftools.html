@@ -201,9 +201,11 @@
         <button id="split-redo" class="btn btn-ghost btn-sm"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M21 10H8a4 4 0 0 0 0 8h9"/><polyline points="17 6 21 10 17 14"/></svg> Redo</button>
       </div>
       <div id="split-toolbar" class="page-toolbar hidden">
-        <button class="btn btn-ghost btn-sm page-rotate-cw-all"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.5 15.5A9 9 0 1 1 12 3a8.9 8.9 0 0 1 6.4 2.7L23 10"/></svg> Rotate CW</button>
-        <button class="btn btn-ghost btn-sm page-rotate-ccw-all"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.5 15.5A9 9 0 1 0 12 3a8.9 8.9 0 0 0-6.4 2.7L1 10"/></svg> Rotate CCW</button>
-        <button class="btn btn-ghost btn-sm page-delete-selected" style="color:var(--danger);"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg> Delete Selected</button>
+        <button class="btn-toolbar page-select-all"><svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Select All</button>
+        <button class="btn-toolbar page-deselect-all"><svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2"><path d="M4 4l16 16"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Deselect All</button>
+        <button class="btn-toolbar page-rotate-cw-all"><svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.5 15.5A9 9 0 1 1 12 3a8.9 8.9 0 0 1 6.4 2.7L23 10"/></svg> Rotate CW</button>
+        <button class="btn-toolbar page-rotate-ccw-all"><svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.5 15.5A9 9 0 1 0 12 3a8.9 8.9 0 0 0-6.4 2.7L1 10"/></svg> Rotate CCW</button>
+        <button class="btn-toolbar btn-toolbar-danger page-delete-selected"><svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg> Delete Selected</button>
         <span class="page-count-badge" id="split-page-count"></span>
       </div>
       <div id="split-pages-grid" class="page-thumb-grid"></div>
