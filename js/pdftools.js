@@ -149,8 +149,11 @@ function yieldToMain() {
 }
 
 /* Render a single page thumbnail (used by batch processor) */
-async function renderSingleThumbnail(pdfData, pageNum, scale = 0.5) {
-  const key = pdfData + '_' + pageNum + '_' + scale;
+/* Counter for unique thumbnail keys (ArrayBuffer.toString() is '[object ArrayBuffer]' for all) */
+let _thumbId = 0;
+
+async function renderSingleThumbnail(pdfData, pageNum, scale = 0.5, fileId = '') {
+  const key = fileId ? fileId + '_' + pageNum + '_' + scale : 'pdf_' + (++_thumbId) + '_' + pageNum + '_' + scale;
   if (_thumbCache[key]) return _thumbCache[key];
   await pdfjs();
   const pdf = await window.pdfjsLib.getDocument({ data: pdfData.slice(0) }).promise;
@@ -168,7 +171,7 @@ async function renderSingleThumbnail(pdfData, pageNum, scale = 0.5) {
 /* Batched async thumbnail renderer — renders in small batches,
    yields to main thread between each batch so UI never freezes.
    Calls onProgress callback after each page completes. */
-async function renderThumbnailsBatched(pdfData, totalPages, scale = 0.5, onProgress = null) {
+async function renderThumbnailsBatched(pdfData, totalPages, scale = 0.5, onProgress = null, fileId = '') {
   const results = new Array(totalPages).fill(null);
   let renderedCount = 0;
   
@@ -176,7 +179,7 @@ async function renderThumbnailsBatched(pdfData, totalPages, scale = 0.5, onProgr
   const urgentCount = Math.min(2, totalPages);
   for (let i = 0; i < urgentCount; i++) {
     try {
-      results[i] = await renderSingleThumbnail(pdfData, i + 1, scale);
+      results[i] = await renderSingleThumbnail(pdfData, i + 1, scale, fileId);
       renderedCount++;
       if (onProgress) onProgress(i, totalPages, results[i]);
     } catch (err) {
@@ -193,7 +196,7 @@ async function renderThumbnailsBatched(pdfData, totalPages, scale = 0.5, onProgr
     
     for (let j = i; j < batchEnd; j++) {
       batchPromises.push(
-        renderSingleThumbnail(pdfData, j + 1, scale)
+        renderSingleThumbnail(pdfData, j + 1, scale, fileId)
           .then(dataUrl => { results[j] = dataUrl; renderedCount++; if (onProgress) onProgress(j, totalPages, dataUrl); return dataUrl; })
           .catch(err => { console.warn('Thumbnail render failed for page', j + 1, err); renderedCount++; return null; })
       );
@@ -247,7 +250,7 @@ function renderPageGrid(container, pages, options = {}) {
       <button class="page-thumb-btn page-thumb-rot-cw" data-idx="${i}" title="Rotate CW">↻</button>
       <button class="page-thumb-btn page-thumb-rot-ccw" data-idx="${i}" title="Rotate CCW">↺</button>` : ''}
       <div class="page-thumb-img-wrap">
-        ${p.thumbnail ? `<img src="${p.thumbnail}" alt="Page ${p.pageNum}" loading="lazy"${p.rotation ? ' style="transform:rotate('+p.rotation+'deg)"' : ''}>` : '<div class="page-thumb-placeholder">' + (p._loading ? '<span class="thumb-spinner"></span>' : 'Page ' + (p.pageNum || '')) + '</div>'}
+        ${p.thumbnail ? `<img src="${p.thumbnail}" alt="Page ${p.pageNum}" loading="lazy"${p.rotation ? ' style="transform:rotate('+p.rotation+'deg)"' : ''}>` : '<div class="page-thumb-placeholder"><span class="thumb-spinner"></span></div>'}
       </div>
       <div class="page-thumb-label">${p.label || p.pageNum}</div>
     </div>
@@ -407,37 +410,47 @@ function initSplitTool() {
       for (let i = 0; i < total; i++) {
         pdfEntry.pages.push(makePageItem(pdfFiles.length, i + 1, 0, `Page ${i+1}`));
       }
-      // Generate thumbnails with batched rendering (no UI freeze)
+      // Generate thumbnails — first 3 pages sync for instant display, rest async
       toast(`Loading ${total} pages from ${file.name}...`);
-      // Don't await — let batches yield to main thread
+      const fileId = file.name + '_' + Date.now();
+      const urgentCount = Math.min(3, total);
+      for (let u = 0; u < urgentCount; u++) {
+        try {
+          const url = await renderSingleThumbnail(data, u + 1, 0.5, fileId);
+          if (url) pdfEntry.pages[u].thumbnail = url;
+        } catch (e) { console.warn('Urgent thumb failed:', u+1, e); }
+      }
+      // Render remaining pages in background
       renderThumbnailsBatched(data, total, 0.5, (pageIdx, totalPgs, dataUrl) => {
-        if (dataUrl && pdfEntry.pages[pageIdx]) {
-          pdfEntry.pages[pageIdx].thumbnail = dataUrl;
-          // Update individual thumbnail in DOM if visible
+        // Find current page entry in the ACTIVE pdfFiles array (handles undo/redo)
+        for (const pf of pdfFiles) {
+          if (pf.file === file && pf.pages[pageIdx]) {
+            pf.pages[pageIdx].thumbnail = dataUrl;
+            break;
+          }
+        }
+        // Update DOM directly
+        try {
           const grid = document.getElementById('split-pages-grid');
-          if (grid) {
-            const items = grid.querySelectorAll('.page-thumb-item');
-            if (items[pageIdx]) {
-              const wrap = items[pageIdx].querySelector('.page-thumb-img-wrap');
-              if (wrap) {
-                const existing = wrap.querySelector('img');
-                if (existing) { existing.src = dataUrl; }
-                else {
-                  const img = document.createElement('img');
-                  img.src = dataUrl;
-                  img.alt = 'Page ' + (pageIdx + 1);
-                  img.loading = 'lazy';
-                  if (pdfEntry.pages[pageIdx]?.rotation) {
-                    img.style.transform = 'rotate(' + pdfEntry.pages[pageIdx].rotation + 'deg)';
-                  }
-                  wrap.innerHTML = '';
-                  wrap.appendChild(img);
-                }
+          if (!grid) return;
+          const items = grid.querySelectorAll('.page-thumb-item');
+          if (items[pageIdx]) {
+            const wrap = items[pageIdx].querySelector('.page-thumb-img-wrap');
+            if (wrap) {
+              const existing = wrap.querySelector('img');
+              if (existing) { existing.src = dataUrl; }
+              else {
+                const img = document.createElement('img');
+                img.src = dataUrl;
+                img.alt = 'Page ' + (pageIdx + 1);
+                img.loading = 'lazy';
+                wrap.innerHTML = '';
+                wrap.appendChild(img);
               }
             }
           }
-        }
-      });
+        } catch (e) { /* DOM may have changed */ }
+      }, fileId);
       pdfFiles.push(pdfEntry);
     }
     undo.reset();
@@ -707,11 +720,49 @@ function initMergeTool() {
       for (let i = 0; i < total; i++) {
         entry.pages.push(makePageItem(null, i + 1, 0, `Page ${i+1}`));
       }
-      // Generate thumbnails
+      // Generate thumbnails — first 3 pages sync for instant display, rest async
       toast(`Loading ${file.name}...`);
-      for (let i = 0; i < total; i++) {
-        renderThumbnailAsync(data, i + 1, entry.pages, i);
+      const mergeFileId = file.name + '_' + Date.now() + '_merge';
+      const urgentMerge = Math.min(3, total);
+      for (let u = 0; u < urgentMerge; u++) {
+        try {
+          const url = await renderSingleThumbnail(data, u + 1, 0.4, mergeFileId);
+          if (url) entry.pages[u].thumbnail = url;
+        } catch (e) { console.warn('Merge urgent thumb failed:', u+1, e); }
       }
+      renderThumbnailsBatched(data, total, 0.4, (pageIdx, totalPgs, dataUrl) => {
+        // Find current page entry in ACTIVE pdfFiles
+        for (const pf of pdfFiles) {
+          if (pf.file === file && pf.pages[pageIdx]) {
+            pf.pages[pageIdx].thumbnail = dataUrl;
+            // Update DOM directly if card is expanded
+            if (pf.expanded) {
+              try {
+                const cards = document.getElementById('merge-pdf-cards');
+                if (!cards) break;
+                const cardIdx = pdfFiles.indexOf(pf);
+                if (cardIdx < 0) break;
+                const grid = cards.querySelector(`[data-pdf-grid="${cardIdx}"]`);
+                if (!grid) break;
+                const items = grid.querySelectorAll('.page-thumb-item');
+                if (!items[pageIdx]) break;
+                const wrap = items[pageIdx].querySelector('.page-thumb-img-wrap');
+                if (!wrap) break;
+                const existing = wrap.querySelector('img');
+                if (existing) existing.src = dataUrl;
+                else {
+                  const img = document.createElement('img');
+                  img.src = dataUrl;
+                  img.alt = 'Page ' + (pageIdx + 1);
+                  wrap.innerHTML = '';
+                  wrap.appendChild(img);
+                }
+              } catch (e) { /* DOM may have been re-rendered */ }
+            }
+            break; // found the file, exit loop
+          }
+        }
+      }, mergeFileId);
       pdfFiles.push(entry);
     }
     undo.reset();
