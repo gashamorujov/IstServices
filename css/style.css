@@ -66,12 +66,12 @@ body{
   background: var(--paper);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
   line-height: 1.55;
   overflow-x: hidden;
-  font-variant-ligatures: none;
-  -webkit-font-feature-settings: "liga" 0, "kern" 1;
-  font-feature-settings: "liga" 0, "kern" 1;
+  font-kerning: normal;
+  font-variant-ligatures: no-contextual;
 }
 img{ max-width:100%; display:block; }
 button{ font-family: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
