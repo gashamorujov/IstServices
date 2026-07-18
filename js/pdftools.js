@@ -6,22 +6,25 @@
    =========================================================== */
 
 /* Local toast — no Firebase dependency needed for PDF Tools */
-let _toastTimer = null;
+let _toastTimers = [];
 function toast(msg, type = '') {
   const container = document.getElementById('toast-container');
   if (!container) return;
+  // Dismiss all existing toasts
+  _toastTimers.forEach(t => { clearTimeout(t.id); if (t.el && t.el.parentNode) { t.el.style.transition = 'opacity 150ms ease, transform 150ms ease'; t.el.style.transform = 'translateY(-10px)'; t.el.style.opacity = '0'; const ref = t.el; setTimeout(() => ref.remove(), 160); } });
+  _toastTimers = [];
   const el = document.createElement('div');
   el.className = 'toast' + (type ? ' ' + type : '');
   el.textContent = msg;
   container.appendChild(el);
-  clearTimeout(_toastTimer);
-  // Auto-close after 1s with smooth animation
-  _toastTimer = setTimeout(() => {
+  const timerId = setTimeout(() => {
     el.style.transition = 'opacity 300ms ease, transform 300ms ease';
     el.style.transform = 'translateY(-10px)';
     el.style.opacity = '0';
-    setTimeout(() => el.remove(), 220);
+    setTimeout(() => el.remove(), 320);
+    _toastTimers = _toastTimers.filter(t => t.el !== el);
   }, 1000);
+  _toastTimers.push({ id: timerId, el: el });
 }
 
 /* ---- Constants ---- */
@@ -494,7 +497,9 @@ function initSplitTool() {
   /* Delete Selected */
   document.querySelector('#split-toolbar .page-delete-selected')?.addEventListener('click', () => {
     const all = allPages();
-    // Remove selected pages from their PDFs
+    const hasSelected = all.some(p => p.selected);
+    if (!hasSelected) return;
+    undo.push(getState());
     for (let i = all.length - 1; i >= 0; i--) {
       if (all[i].selected) {
         let count = 0;
@@ -505,7 +510,7 @@ function initSplitTool() {
       }
     }
     pdfFiles = pdfFiles.filter(f => f.pages.length > 0);
-    undo.push(getState()); renderSplitGrid(); updateSplitUI();
+    renderSplitGrid(); updateSplitUI();
   });
 
   /* Export */
@@ -674,7 +679,7 @@ function initMergeTool() {
         onSelect(idx) { f.pages[idx].selected = !f.pages[idx].selected; renderMergeCards(); },
         onRotateCW(idx) { f.pages[idx].rotation = (f.pages[idx].rotation || 0) + 90; undo.push(getState()); renderMergeCards(); },
         onRotateCCW(idx) { f.pages[idx].rotation = (f.pages[idx].rotation || 0) - 90; undo.push(getState()); renderMergeCards(); },
-        onDelete(idx) { f.pages.splice(idx, 1); if (!f.pages.length) pdfFiles.splice(fi, 1); undo.push(getState()); renderMergeCards(); updateMergeUI(); },
+        onDelete(idx) { undo.push(getState()); f.pages.splice(idx, 1); if (!f.pages.length) pdfFiles.splice(fi, 1); renderMergeCards(); updateMergeUI(); },
         onDrop(fromIdx, toIdx) {
           // Calculate global page positions
           let globalPages = [];
@@ -799,12 +804,15 @@ function initMergeTool() {
     renderMergeCards();
   });
   document.getElementById('merge-delete-selected')?.addEventListener('click', () => {
-    let changed = false;
+    const hasSelected = pdfFiles.some(f => f.pages.some(p => p.selected));
+    if (!hasSelected) return;
+    undo.push(getState());
     pdfFiles.forEach(f => {
-      f.pages = f.pages.filter(p => { if (p.selected) { changed = true; return false; } return true; });
+      f.pages = f.pages.filter(p => !p.selected);
     });
     pdfFiles = pdfFiles.filter(f => f.pages.length > 0);
-    if (changed) { undo.push(getState()); renderMergeCards(); updateMergeUI(); }
+    renderMergeCards();
+    updateMergeUI();
   });
 
   /* Export */
