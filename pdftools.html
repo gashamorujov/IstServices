@@ -157,6 +157,12 @@
         <button id="merge-undo" class="btn btn-ghost btn-sm" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M3 10h13a4 4 0 0 1 0 8H7"/><polyline points="7 6 3 10 7 14"/></svg> Undo</button>
         <button id="merge-redo" class="btn btn-ghost btn-sm" title="Redo (Ctrl+Y)"><svg viewBox="0 0 24 24" fill="none" width="14" height="14" stroke="currentColor" stroke-width="2"><path d="M21 10H8a4 4 0 0 0 0 8h9"/><polyline points="17 6 21 10 17 14"/></svg> Redo</button>
       </div>
+      <div class="page-toolbar hidden" id="merge-page-toolbar">
+        <button class="btn-toolbar" id="merge-select-all"><svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Select All</button>
+        <button class="btn-toolbar" id="merge-deselect-all"><svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2"><path d="M4 4l16 16"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg> Deselect All</button>
+        <button class="btn-toolbar btn-toolbar-danger" id="merge-delete-selected"><svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg> Delete Selected</button>
+        <span class="page-count-badge hidden" id="merge-page-count"></span>
+      </div>
       <div id="merge-pdf-cards" class="merge-pdf-cards"></div>
       <div id="merge-progress" class="tool-progress hidden">
         <div class="tool-progress-bar"><div id="merge-progress-fill" class="tool-progress-fill"></div></div>

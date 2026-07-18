@@ -655,6 +655,12 @@ function initMergeTool() {
     const undoBar = document.getElementById('merge-undo-bar');
     if (undoBar) undoBar.classList.toggle('hidden', pdfFiles.length === 0);
     if (undo && pdfFiles.length > 0) { undo._sync(); }
+    /* Update count badge */
+    const countBadge = document.getElementById('merge-page-count');
+    if (countBadge) { 
+      const total = pdfFiles.reduce((a, f) => a + f.pages.length, 0);
+      countBadge.textContent = total + ' pages';
+    }
 
     /* Render page grids inside expanded cards */
     pdfFiles.forEach((f, fi) => {
@@ -695,8 +701,13 @@ function initMergeTool() {
     const total = pdfFiles.reduce((a, f) => a + f.pages.length, 0);
     const startBtn = document.getElementById('merge-start');
     startBtn.disabled = pdfFiles.length < 2 && total < 2;
+    const hasFiles = pdfFiles.length > 0;
     const undoBar = document.getElementById('merge-undo-bar');
-    if (undoBar) undoBar.classList.toggle('hidden', pdfFiles.length === 0);
+    if (undoBar) undoBar.classList.toggle('hidden', !hasFiles);
+    const toolbar = document.getElementById('merge-page-toolbar');
+    if (toolbar) toolbar.classList.toggle('hidden', !hasFiles);
+    const countBadge = document.getElementById('merge-page-count');
+    if (countBadge) { countBadge.classList.toggle('hidden', !hasFiles); countBadge.textContent = total + ' pages'; }
   }
 
   /* Dropzone */
@@ -775,6 +786,24 @@ function initMergeTool() {
   undo = new UndoRedoManager();
   undo.bind('merge-undo', 'merge-redo');
   undo.onChange = (state) => applyState(state);
+
+  /* Merge toolbar: Select All, Deselect All, Delete Selected */
+  document.getElementById('merge-select-all')?.addEventListener('click', () => {
+    pdfFiles.forEach(f => f.pages.forEach(p => { p.selected = true; }));
+    renderMergeCards();
+  });
+  document.getElementById('merge-deselect-all')?.addEventListener('click', () => {
+    pdfFiles.forEach(f => f.pages.forEach(p => { p.selected = false; }));
+    renderMergeCards();
+  });
+  document.getElementById('merge-delete-selected')?.addEventListener('click', () => {
+    let changed = false;
+    pdfFiles.forEach(f => {
+      f.pages = f.pages.filter(p => { if (p.selected) { changed = true; return false; } return true; });
+    });
+    pdfFiles = pdfFiles.filter(f => f.pages.length > 0);
+    if (changed) { undo.push(getState()); renderMergeCards(); updateMergeUI(); }
+  });
 
   /* Export */
   document.getElementById('merge-start').addEventListener('click', async () => {

@@ -411,20 +411,72 @@
   align-items: center;
   gap: 6px;
   margin-top: 12px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   background: var(--surface-alt);
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   border: 1px solid var(--border);
 }
-.page-count-badge {
+
+/* Premium toolbar button — consistent, minimal, modern */
+.btn-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-muted);
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+  font-family: inherit;
+  line-height: 1;
+}
+.btn-toolbar:hover {
+  border-color: var(--gold);
+  color: var(--heading);
+  background: var(--surface);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.btn-toolbar:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.btn-toolbar:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+.btn-toolbar svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.btn-toolbar-danger {
+  color: var(--danger) !important;
+}
+.btn-toolbar-danger:hover {
+  border-color: var(--danger) !important;
+  background: var(--danger-bg) !important;
+  color: var(--danger-light) !important;
+}
+
+.page-count-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
   margin-left: auto;
-  padding: 3px 10px;
+  padding: 4px 12px;
   background: var(--surface);
   border-radius: var(--radius-full);
   border: 1px solid var(--border);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ---- Undo Bar ---- */
@@ -1156,6 +1208,19 @@
 .crop-handle-e { top: 50%; right: -7px; margin-top: -7px; cursor: e-resize; }
 
 @media (max-width: 600px) {
+  .page-toolbar {
+    gap: 4px;
+    padding: 5px 6px;
+  }
+  .btn-toolbar {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+  .btn-toolbar svg {
+    width: 14px;
+    height: 14px;
+  }
   .page-thumb-grid {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
     gap: 10px !important;
