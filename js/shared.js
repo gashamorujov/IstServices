@@ -62,6 +62,50 @@ export function escapeHtml(str) {
   }[c]));
 }
 
+/* ---------------------------------------------------------
+   Unicode-aware search normalization
+   Strips diacritics, collapses spaces, trims, and lowercases
+   so "Dənizçi", "denizci", "DENİZCİ" all match the same item.
+--------------------------------------------------------- */
+const _normCache = new Map();
+export function normalizeSearch(str) {
+  if (_normCache.has(str)) return _normCache.get(str);
+  let s = String(str ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[İı]/g, (c) => c === "İ" ? "i" : "i")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (_normCache.size > 500) _normCache.clear();
+  _normCache.set(str, s);
+  return s;
+}
+
+export function matchesSearch(name, term) {
+  if (!term) return true;
+  const normName = normalizeSearch(name);
+  const normTerm = normalizeSearch(term);
+  const termParts = normTerm.split(" ").filter(Boolean);
+  return termParts.every((part) => normName.includes(part));
+}
+
+export function highlightText(text, term) {
+  if (!term) return escapeHtml(text);
+  const normTerm = normalizeSearch(term);
+  const parts = normTerm.split(" ").filter(Boolean);
+  if (!parts.length) return escapeHtml(text);
+  const escaped = escapeHtml(text);
+  const escapedLower = normalizeSearch(text);
+  const regexParts = parts.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  if (!regexParts) return escaped;
+  return escaped.replace(
+    new RegExp("(" + regexParts + ")", "gi"),
+    '<mark class="search-hl">$1</mark>'
+  );
+}
+
 export function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return "";
   if (bytes < 1024) return bytes + " B";

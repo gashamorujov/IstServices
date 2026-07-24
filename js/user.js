@@ -11,7 +11,7 @@ import {
   subscribeItems, getSortedItems, getFilesOf,
   escapeHtml, formatBytes, formatDate, getExtension,
   FILE_COLOR_MAP, openPreview, initPreviewOverlay, triggerDownload, showToast,
-  saveMergeRecord
+  saveMergeRecord, matchesSearch, highlightText
 } from "./shared.js";
 import { initThemeSwitch } from "./theme.js";
 import { hasValidSession, login } from "./auth.js";
@@ -146,15 +146,16 @@ function itemIconSvg() {
 
 function renderUserGrid() {
   const all = getSortedItems(itemsData);
-  const term = userSearchTerm.trim().toLowerCase();
-  const filtered = term ? all.filter((it) => (it.name || "").toLowerCase().includes(term)) : all;
+  const term = userSearchTerm.trim();
+  const filtered = term ? all.filter((it) => matchesSearch(it.name, term)) : all;
 
   itemsGrid.innerHTML = filtered.map((it) => {
     const count = it.files ? Object.keys(it.files).length : 0;
+    const nameHtml = highlightText(it.name || "", term);
     return `
       <button class="item-card" data-id="${it.id}">
         <div class="item-card-icon">${itemIconSvg()}</div>
-        <div class="item-card-name">${escapeHtml(it.name)}</div>
+        <div class="item-card-name">${nameHtml}</div>
         <div class="item-card-count">${count} sənəd</div>
       </button>`;
   }).join("");
@@ -246,10 +247,15 @@ document.addEventListener("keydown", (e) => {
    separately-coded admin.html — a full navigation, not just
    a hidden panel toggle.
 --------------------------------------------------------- */
+let _searchRaf = null;
 userSearchInput.addEventListener("input", () => {
   userSearchTerm = userSearchInput.value;
   if (userSearchClear) userSearchClear.classList.toggle("visible", userSearchTerm.length > 0);
-  renderUserGrid();
+  if (_searchRaf) cancelAnimationFrame(_searchRaf);
+  _searchRaf = requestAnimationFrame(() => {
+    _searchRaf = null;
+    renderUserGrid();
+  });
 });
 
 if (userSearchClear) {
