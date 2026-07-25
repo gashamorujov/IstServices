@@ -345,8 +345,8 @@ function showMergeStep(step) {
 
 function renderMergeListeners() {
   const all = getSortedItems(itemsData);
-  const term = mergeSearchTerm.trim().toLowerCase();
-  const filtered = term ? all.filter((it) => (it.name || "").toLowerCase().includes(term)) : all;
+  const term = mergeSearchTerm.trim();
+  const filtered = term ? all.filter((it) => matchesSearch(it.name, term)) : all;
 
   mergeListenersList.innerHTML = filtered.map((it) => {
     const count = it.files ? Object.keys(it.files).length : 0;
@@ -388,6 +388,9 @@ function renderMergeListeners() {
 function toggleMergeSelection(id, checked) {
   if (checked) mergeSelectedIds.add(id);
   else mergeSelectedIds.delete(id);
+  // Clear search after selection so user can search for next person
+  mergeSearchTerm = "";
+  if (mergeSearch) mergeSearch.value = "";
   updateMergeSelectedCount();
   // Re-render to update visual state
   renderMergeListeners();
@@ -415,10 +418,15 @@ function clearAllMergeState() {
 }
 
 // Search handler
+let _mergeSearchRaf = null;
 if (mergeSearch) {
   mergeSearch.addEventListener("input", () => {
     mergeSearchTerm = mergeSearch.value;
-    renderMergeListeners();
+    if (_mergeSearchRaf) cancelAnimationFrame(_mergeSearchRaf);
+    _mergeSearchRaf = requestAnimationFrame(() => {
+      _mergeSearchRaf = null;
+      renderMergeListeners();
+    });
   });
 }
 
