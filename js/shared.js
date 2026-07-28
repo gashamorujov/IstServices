@@ -286,6 +286,7 @@ export function initPreviewOverlay() {
 }
 
 export async function triggerDownload(file) {
+  const fileName = file.name || "download";
   /* Try Drive API fetch first — works on mobile, bypasses popup blockers */
   if (file.driveFileId) {
     try {
@@ -296,7 +297,8 @@ export async function triggerDownload(file) {
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = blobUrl;
-        a.download = file.name;
+        a.download = fileName;
+        a.setAttribute("download", fileName);
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

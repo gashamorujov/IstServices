@@ -287,11 +287,13 @@ export async function mergePdfs(files, onProgress) {
    Trigger download of a merged PDF
 --------------------------------------------------------- */
 export function downloadMergedPdf(pdfBytes, fileName) {
+  const name = fileName.endsWith(".pdf") ? fileName : fileName + ".pdf";
   const blob = new Blob([pdfBytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = fileName.endsWith(".pdf") ? fileName : fileName + ".pdf";
+  a.download = name;
+  a.setAttribute("download", name);
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
