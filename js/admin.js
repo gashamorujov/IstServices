@@ -10,6 +10,7 @@ import {
   openPreview, initPreviewOverlay, triggerDownload, db
 } from "./shared.js";
 import { uploadToDrive, deleteFromDrive, ensureAccessToken, isDriveConnected, signOutDrive, checkDuplicateInDrive, renameFileOnDrive } from "./drive.js";
+import { googleDriveConfig } from "./firebase-config.js";
 import { set, update, remove, child } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { onValue, ref } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { initThemeSwitch } from "./theme.js";
@@ -87,6 +88,7 @@ const manualAddSubmit = $("manual-add-submit");
 /* Settings elements */
 const authStatusDot = $("auth-status-dot");
 const adminMergesBtn = $("admin-merges-btn");
+const adminExportPdfsBtn = $("admin-export-pdfs-btn");
 const adminMergesView = $("admin-merges-view");
 const adminMergesBack = $("admin-merges-back");
 const adminMergesList = $("admin-merges-list");
@@ -210,6 +212,133 @@ subscribeItems((data) => {
     renderFilesView();
   }
 });
+
+/* ---------------------------------------------------------
+   ADMIN — Export all PDFs as ZIP
+   Collects every PDF from every listener, downloads each from
+   Google Drive (public files), and packs them into one ZIP
+   organized as "Listener Name / File Name.pdf".
+--------------------------------------------------------- */
+const JSZIP_URL = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+let _jszipPromise = null;
+function loadJszip() {
+  if (_jszipPromise) return _jszipPromise;
+  _jszipPromise = new Promise((resolve, reject) => {
+    if (window.JSZip) { resolve(window.JSZip); return; }
+    const s = document.createElement("script");
+    s.src = JSZIP_URL;
+    s.onload = () => resolve(window.JSZip);
+    s.onerror = () => reject(Error("JSZip yüklənmədi"));
+    document.head.appendChild(s);
+  });
+  return _jszipPromise;
+}
+
+function sanitizeZipName(name) {
+  // Keep a readable name but strip characters illegal in zip paths
+  return String(name || "fayl")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim() || "fayl";
+}
+
+async function collectAllPdfs() {
+  const files = [];
+  const listeners = Object.entries(itemsData || {});
+  for (const [itemId, item] of listeners) {
+    const listenerName = sanitizeZipName(item?.name || "Dinləyici");
+    const fileEntries = Object.entries((item && item.files) || {});
+    for (const [fileId, f] of fileEntries) {
+      const isPdf =
+        (f.mimeType && f.mimeType === "application/pdf") ||
+        (f.name && /\.pdf$/i.test(f.name));
+      if (!isPdf) continue;
+      files.push({ id: fileId, name: f.name || "fayl.pdf", driveFileId: f.driveFileId, url: f.url, size: f.size, listenerName });
+    }
+  }
+  return files;
+}
+
+async function downloadPdfBytes(file) {
+  // Prefer Drive API public download (works for files made public on upload)
+  if (file.driveFileId) {
+    try {
+      const url = "https://www.googleapis.com/drive/v3/files/" + file.driveFileId + "?alt=media&key=" + googleDriveConfig.apiKey;
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const buf = await resp.arrayBuffer();
+        return new Uint8Array(buf);
+      }
+    } catch (_) { /* fall through to URL */ }
+  }
+  if (file.url) {
+    try {
+      const resp = await fetch(file.url);
+      if (resp.ok) {
+        const buf = await resp.arrayBuffer();
+        return new Uint8Array(buf);
+      }
+    } catch (_) { /* fall through */ }
+  }
+  return null;
+}
+
+if (adminExportPdfsBtn) {
+  adminExportPdfsBtn.addEventListener("click", async () => {
+    if (adminExportPdfsBtn.dataset.busy === "1") return;
+    adminExportPdfsBtn.dataset.busy = "1";
+    adminExportPdfsBtn.disabled = true;
+    const originalText = adminExportPdfsBtn.innerHTML;
+    adminExportPdfsBtn.innerHTML = 'Hazırlanır...';
+    try {
+      const pdfs = await collectAllPdfs();
+      if (!pdfs.length) {
+        showToast("Heç bir PDF tapılmadı", "warning");
+        return;
+      }
+      showToast(pdfs.length + " PDF tapıldı, yüklənir...", "");
+      const JSZip = await loadJszip();
+      const zip = new JSZip();
+      let done = 0, failed = 0;
+      const total = pdfs.length;
+      // Process sequentially to avoid Drive rate limits
+      for (const pdf of pdfs) {
+        try {
+          const bytes = await downloadPdfBytes(pdf);
+          if (bytes) {
+            const path = pdf.listenerName + "/" + sanitizeZipName(pdf.name);
+            zip.file(path, bytes);
+          } else {
+            failed++;
+          }
+        } catch (err) {
+          failed++;
+          console.warn("Export failed:", pdf.name, err);
+        }
+        done++;
+        if (done % 5 === 0 || done === total) {
+          adminExportPdfsBtn.innerHTML = 'Yüklənirlər... ' + done + '/' + total;
+        }
+      }
+      const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "IstServices_Bütün_PDFlər.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      showToast(failed > 0 ? (total - failed) + " PDF yükləndi, " + failed + " yüklənə bilmədi" : "Bütün PDF-lər ZIP olaraq yükləndi!", "success");
+    } catch (err) {
+      console.error("PDF export xətası:", err);
+      showToast(err.message || "PDF export zamanı xəta baş verdi", "error");
+    } finally {
+      adminExportPdfsBtn.dataset.busy = "";
+      adminExportPdfsBtn.disabled = false;
+      adminExportPdfsBtn.innerHTML = originalText;
+    }
+  });
+}
 
 /* ---------------------------------------------------------
    ADMIN — Items grid (main view)
