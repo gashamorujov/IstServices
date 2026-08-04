@@ -10,7 +10,6 @@ import {
   openPreview, initPreviewOverlay, triggerDownload, db
 } from "./shared.js";
 import { uploadToDrive, deleteFromDrive, ensureAccessToken, isDriveConnected, signOutDrive, checkDuplicateInDrive, renameFileOnDrive } from "./drive.js";
-import { googleDriveConfig } from "./firebase-config.js";
 import { set, update, remove, child } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { onValue, ref } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 import { initThemeSwitch } from "./theme.js";
@@ -260,23 +259,39 @@ async function collectAllPdfs() {
 }
 
 async function downloadPdfBytes(file) {
-  // Prefer Drive API public download (works for files made public on upload)
+  // Use the admin's OAuth access token for reliable download.
+  // alt=media + API key fails silently on most Drive files;
+  // only the full OAuth token works consistently.
+  let token = null;
+  try {
+    token = await ensureAccessToken(false);
+  } catch (_) { /* no token — try anonymous */ }
+
   if (file.driveFileId) {
     try {
-      const url = "https://www.googleapis.com/drive/v3/files/" + file.driveFileId + "?alt=media&key=" + googleDriveConfig.apiKey;
-      const resp = await fetch(url);
+      const headers = {};
+      if (token) headers["Authorization"] = "Bearer " + token;
+      const resp = await fetch(
+        "https://www.googleapis.com/drive/v3/files/" + file.driveFileId + "?alt=media",
+        { headers }
+      );
       if (resp.ok) {
-        const buf = await resp.arrayBuffer();
-        return new Uint8Array(buf);
+        const contentType = resp.headers.get("content-type") || "";
+        if (!contentType.includes("text/html") && !contentType.includes("text/plain")) {
+          return new Uint8Array(await resp.arrayBuffer());
+        }
       }
-    } catch (_) { /* fall through to URL */ }
+    } catch (_) { /* fall through */ }
   }
+  // Fallback: uc?export=download (may show confirmation for large files)
   if (file.url) {
     try {
       const resp = await fetch(file.url);
       if (resp.ok) {
-        const buf = await resp.arrayBuffer();
-        return new Uint8Array(buf);
+        const ct = resp.headers.get("content-type") || "";
+        if (!ct.includes("text/html")) {
+          return new Uint8Array(await resp.arrayBuffer());
+        }
       }
     } catch (_) { /* fall through */ }
   }
@@ -299,27 +314,47 @@ if (adminExportPdfsBtn) {
       showToast(pdfs.length + " PDF tapıldı, yüklənir...", "");
       const JSZip = await loadJszip();
       const zip = new JSZip();
+      const BATCH = 4;
       let done = 0, failed = 0;
       const total = pdfs.length;
-      // Process sequentially to avoid Drive rate limits
-      for (const pdf of pdfs) {
-        try {
-          const bytes = await downloadPdfBytes(pdf);
-          if (bytes) {
+
+      // Preload OAuth token once for all downloads
+      let authToken = null;
+      try { authToken = await ensureAccessToken(false); } catch (_) {}
+
+      // Download in parallel batches for speed
+      for (let i = 0; i < total; i += BATCH) {
+        const batch = pdfs.slice(i, i + BATCH);
+        const results = await Promise.allSettled(
+          batch.map((pdf) => {
+            const headers = {};
+            if (authToken) headers["Authorization"] = "Bearer " + authToken;
+            const apiUrl = "https://www.googleapis.com/drive/v3/files/" + pdf.driveFileId + "?alt=media";
+            return fetch(apiUrl, { headers }).then((r) => {
+              if (!r.ok) throw new Error(r.status);
+              const ct = r.headers.get("content-type") || "";
+              if (ct.includes("text/html") || ct.includes("text/plain")) throw new Error("Not a PDF");
+              return r.arrayBuffer();
+            }).then((buf) => ({ pdf, buf: new Uint8Array(buf) }));
+          })
+        );
+
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value.buf.byteLength > 0) {
+            const { pdf, buf } = result.value;
             const path = pdf.listenerName + "/" + sanitizeZipName(pdf.name);
-            zip.file(path, bytes);
+            zip.file(path, buf);
           } else {
             failed++;
           }
-        } catch (err) {
-          failed++;
-          console.warn("Export failed:", pdf.name, err);
         }
-        done++;
-        if (done % 5 === 0 || done === total) {
-          adminExportPdfsBtn.innerHTML = 'Yüklənirlər... ' + done + '/' + total;
-        }
+
+        done += batch.length;
+        adminExportPdfsBtn.innerHTML = 'Yüklənirlər... ' + done + '/' + total;
+        // Brief pause between batches to respect rate limits
+        if (i + BATCH < total) await new Promise((r) => setTimeout(r, 100));
       }
+
       const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
