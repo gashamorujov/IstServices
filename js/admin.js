@@ -23,7 +23,14 @@ initThemeSwitch("theme-switch");
 (async function guardAuth() {
   const authScreen = document.getElementById("auth-check-screen");
   let valid = false;
-  try { valid = await hasValidSession(); } catch (err) { console.error(err); }
+  try {
+    valid = await Promise.race([
+      hasValidSession(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("auth timeout")), 8000))
+    ]);
+  } catch (err) {
+    console.error("Auth guard error:", err);
+  }
   if (!valid) { window.location.replace("index.html"); return; }
   document.body.classList.remove("auth-pending");
   if (authScreen) authScreen.classList.add("splash-hidden");
@@ -131,6 +138,13 @@ if (driveSignoutBtn) {
 }
 
 updateDriveSignoutVisibility();
+
+/* Refresh Drive status when tab regains focus */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    updateDriveSignoutVisibility();
+  }
+});
 
 /* ---------------------------------------------------------
    Settings view

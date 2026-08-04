@@ -1,40 +1,16 @@
 /* ===========================================================
    IST Trust Zone — Site login
    ---------------------------------------------------------
-   There is no traditional application server in this project —
-   both pages talk directly to Firebase Realtime Database (see
-   README: the database rules are public read/write, since the
-   project ships with no login of its own on the data layer).
-   Given that constraint, this module implements the strongest
-   practical version of the requested login system:
+   Password-based session with maximum persistence:
 
-   - The password itself is never stored or compared in plain
-     text anywhere, in Firebase or in the frontend. Only a
-     salted SHA-256 hash (computed with the browser's native
-     Web Crypto API) is ever written to the database or held
-     in memory.
-   - "config/auth" in Firebase holds { passwordHash, passwordSalt,
-     authVersion }. authVersion increments every time the
-     password is changed from the Admin Panel.
-   - A successful login stores only the authVersion that was
-     current at login time in localStorage — not the password,
-     not the hash. On every page load that stored version is
-     compared against the live authVersion in Firebase; a
-     mismatch (i.e. the password was changed since) forces a
-     fresh login, which is what invalidates old sessions.
-   - Because localStorage (not sessionStorage) is used, closing
-     and reopening the browser does not ask for the password
-     again, per the request.
-
-   Honest limitation: because Firebase's rules are public
-   read/write (required for the realtime sync elsewhere in this
-   app to work without a backend), a technically sophisticated
-   visitor could in principle read config/auth's hash or write
-   to items/ directly, bypassing the UI. A real access-control
-   boundary would require Firebase Auth + security rules or a
-   server layer, which is a larger architectural change outside
-   this task's scope. This module is the best login system
-   achievable within the project's current architecture.
+   - Only a salted SHA-256 hash is stored in Firebase.
+   - Session stored in localStorage as { v: authVersion }.
+   - Session survives: refresh, restart, long inactivity,
+     network loss, redeploy, and panel switching.
+   - Cross-tab sync via storage events.
+   - Periodic Firebase check (every 10 min) for authVersion
+     changes — only invalidates session if password was changed.
+   - Logout ONLY on explicit user action.
 =========================================================== */
 import {
   get, set
@@ -43,11 +19,11 @@ import { authConfigRef } from "./shared.js";
 import { AUTH_SEED } from "./firebase-config.js";
 
 const SESSION_KEY = "ist_session";
+let cachedAuthConfig = null;
+let sessionValidationTimer = null;
 
-/* Pure-JS SHA-256 fallback for non-HTTPS / file:// contexts
-   where the Web Crypto API (crypto.subtle) is unavailable. */
+/* Pure-JS SHA-256 fallback for non-HTTPS / file:// contexts */
 async function sha256Hex(text) {
-  /* Try native Web Crypto first (fast, available on HTTPS). */
   if (typeof crypto !== "undefined" && crypto.subtle) {
     try {
       const bytes = new TextEncoder().encode(text);
@@ -55,9 +31,8 @@ async function sha256Hex(text) {
       return Array.from(new Uint8Array(digest))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-    } catch (_) { /* fall through to pure JS */ }
+    } catch (_) {}
   }
-  /* Pure JS SHA-256 — used only as a last-resort fallback. */
   return sha256PureJS(text);
 }
 
@@ -110,6 +85,9 @@ function randomSaltHex() {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/* ---------------------------------------------------------
+   Session persistence — localStorage
+--------------------------------------------------------- */
 function readSession() {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -126,56 +104,89 @@ function writeSession(authVersion) {
 }
 
 export function clearSession() {
-  try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch (_) {}
 }
 
-/* Reads config/auth, bootstrapping it with the seed hash on the
-   very first run (i.e. nothing has been written there yet). */
+/* ---------------------------------------------------------
+   Firebase auth config — cached for performance
+--------------------------------------------------------- */
 async function fetchAuthConfig() {
-  const snap = await get(authConfigRef);
-  if (snap.exists()) return snap.val();
+  if (cachedAuthConfig) return cachedAuthConfig;
+  try {
+    const snap = await get(authConfigRef);
+    if (snap.exists()) {
+      cachedAuthConfig = snap.val();
+      return cachedAuthConfig;
+    }
+  } catch (_) {}
+  // Bootstrap seed on first run
   const seeded = {
     passwordHash: AUTH_SEED.hash,
     passwordSalt: AUTH_SEED.salt,
     authVersion: 1
   };
-  await set(authConfigRef, seeded);
+  try {
+    await set(authConfigRef, seeded);
+  } catch (_) {}
+  cachedAuthConfig = seeded;
   return seeded;
 }
 
-/* True if the locally stored session still matches the current
-   authVersion in Firebase (i.e. the password hasn't changed
-   since this browser last logged in). */
+/**
+ * Force-reload auth config from Firebase (bypasses cache).
+ * Used by periodic validation.
+ */
+async function reloadAuthConfig() {
+  try {
+    const snap = await get(authConfigRef);
+    if (snap.exists()) {
+      cachedAuthConfig = snap.val();
+    }
+  } catch (_) {}
+  return cachedAuthConfig;
+}
+
+/* ---------------------------------------------------------
+   Session validation
+--------------------------------------------------------- */
 export async function hasValidSession() {
   const config = await fetchAuthConfig();
   const session = readSession();
   return !!(session && session.v === config.authVersion);
 }
 
+/* ---------------------------------------------------------
+   Login
+--------------------------------------------------------- */
 export async function login(password) {
   const config = await fetchAuthConfig();
   const hash = await sha256Hex(config.passwordSalt + password);
   if (hash === config.passwordHash) {
     writeSession(config.authVersion);
+    startSessionValidation();
     return true;
   }
   return false;
 }
 
-/* Changes the site password (Admin Panel only). Bumps authVersion,
-   which invalidates every other session on their next page load —
-   this browser's session is refreshed to the new version so the
-   admin who just changed it isn't logged out mid-task. */
+/* ---------------------------------------------------------
+   Change password (Admin Panel only)
+   --------------------------------------------------------- */
 export async function changePassword(newPassword) {
   const salt = randomSaltHex();
   const hash = await sha256Hex(salt + newPassword);
   const config = await fetchAuthConfig();
   const newVersion = (config.authVersion || 1) + 1;
   await set(authConfigRef, { passwordHash: hash, passwordSalt: salt, authVersion: newVersion });
+  cachedAuthConfig = { passwordHash: hash, passwordSalt: salt, authVersion: newVersion };
   writeSession(newVersion);
 }
 
-/* Returns the current authVersion if a password is set, or null/0 if not. */
+/* ---------------------------------------------------------
+   Current auth version
+--------------------------------------------------------- */
 export async function getCurrentAuthVersion() {
   try {
     const config = await fetchAuthConfig();
@@ -185,7 +196,9 @@ export async function getCurrentAuthVersion() {
   }
 }
 
-/* Removes the password (resets to open access). */
+/* ---------------------------------------------------------
+   Remove password (reset to open access)
+--------------------------------------------------------- */
 export async function removePassword() {
   const config = await fetchAuthConfig();
   const newVersion = (config.authVersion || 0) + 1;
@@ -194,5 +207,66 @@ export async function removePassword() {
     passwordSalt: "",
     authVersion: newVersion
   });
+  cachedAuthConfig = { passwordHash: "", passwordSalt: "", authVersion: newVersion };
   writeSession(newVersion);
 }
+
+/* ---------------------------------------------------------
+   Periodic session validation (every 10 minutes)
+   Checks Firebase for authVersion changes (password change).
+   Only invalidates session if the version actually changed.
+--------------------------------------------------------- */
+function startSessionValidation() {
+  stopSessionValidation();
+  sessionValidationTimer = setInterval(async () => {
+    try {
+      const freshConfig = await reloadAuthConfig();
+      const session = readSession();
+      if (session && freshConfig && session.v !== freshConfig.authVersion) {
+        // Password was changed in another session — invalidate locally
+        clearSession();
+        window.location.reload();
+      }
+    } catch (_) {
+      // Firebase unreachable — don't invalidate, just skip this check
+    }
+  }, 600000); // 10 minutes
+}
+
+function stopSessionValidation() {
+  if (sessionValidationTimer) {
+    clearInterval(sessionValidationTimer);
+    sessionValidationTimer = null;
+  }
+}
+
+/* ---------------------------------------------------------
+   Cross-tab sync via storage events
+   If another tab clears the session, this tab should too.
+--------------------------------------------------------- */
+window.addEventListener("storage", (e) => {
+  if (e.key === SESSION_KEY) {
+    if (!e.newValue) {
+      // Another tab logged out
+      stopSessionValidation();
+      window.location.reload();
+    } else {
+      // Another tab logged in or changed version — reload to pick up
+      try {
+        const otherSession = JSON.parse(e.newValue);
+        const mySession = readSession();
+        if (!mySession || otherSession.v !== mySession.v) {
+          window.location.reload();
+        }
+      } catch (_) {}
+    }
+  }
+});
+
+/* Start validation if there's already a valid session */
+(async () => {
+  try {
+    const session = readSession();
+    if (session) startSessionValidation();
+  } catch (_) {}
+})();

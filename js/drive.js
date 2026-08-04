@@ -1,8 +1,15 @@
 /* ===========================================================
-   IST Trust Zone — Google Drive integration (admin.html only)
+   IST Trust Zone — Google Drive integration
    Persistent auth + year-based archive folder (IstArxivYYYY).
    Files are stored inside a Drive folder that auto-creates
    and auto-rotates each calendar year.
+
+   Token strategy:
+   - Tokens saved to localStorage (survives refresh / restart)
+   - Proactive refresh: timers at 5 min and 1 min before expiry
+   - Visibility listener: silent refresh when tab regains focus
+   - Cross-tab sync: storage events keep all tabs in sync
+   - Retry on failure: up to 3 attempts before giving up
 =========================================================== */
 import { googleDriveConfig } from "./firebase-config.js";
 
@@ -12,7 +19,10 @@ const FILES_URL = "https://www.googleapis.com/drive/v3/files";
 let tokenClient = null;
 let accessToken = null;
 let tokenExpiresAt = 0;
-let refreshTimer = null;
+let primaryRefreshTimer = null;
+let fallbackRefreshTimer = null;
+let refreshRetryCount = 0;
+const MAX_REFRESH_RETRIES = 3;
 let cachedFolderId = null;
 
 const STORAGE_KEY = "ist_drive_token";
@@ -68,42 +78,91 @@ function clearSavedToken() {
 }
 
 /* ---------------------------------------------------------
-   Proactive refresh timer
+   Status helpers
 --------------------------------------------------------- */
-function scheduleRefresh() {
-  clearTimeout(refreshTimer);
-  if (!accessToken || !tokenExpiresAt) return;
-  const ms = Math.max(0, tokenExpiresAt - Date.now() - 300000);
-  refreshTimer = setTimeout(async () => {
-    try { await silentRefresh(); } catch (_) {}
-  }, ms);
-}
-
-function cancelRefresh() {
-  clearTimeout(refreshTimer);
-  refreshTimer = null;
+function isTokenValid() {
+  return !!(accessToken && tokenExpiresAt && Date.now() < tokenExpiresAt - 30000);
 }
 
 /* ---------------------------------------------------------
-   Silent refresh
+   Proactive refresh — dual timer strategy
+   Primary: fires 5 min before expiry
+   Fallback: fires 1 min before expiry (catches missed primary)
+--------------------------------------------------------- */
+function scheduleRefresh() {
+  clearTimeout(primaryRefreshTimer);
+  clearTimeout(fallbackRefreshTimer);
+  if (!accessToken || !tokenExpiresAt) return;
+
+  const now = Date.now();
+  const timeUntilExpiry = tokenExpiresAt - now;
+
+  // Primary refresh: 5 minutes before expiry
+  const primaryMs = Math.max(0, timeUntilExpiry - 300000);
+  primaryRefreshTimer = setTimeout(async () => {
+    try { await silentRefresh(); } catch (_) {}
+  }, primaryMs);
+
+  // Fallback refresh: 1 minute before expiry (catches missed primary)
+  const fallbackMs = Math.max(0, timeUntilExpiry - 60000);
+  fallbackRefreshTimer = setTimeout(async () => {
+    if (!isTokenValid()) {
+      try { await silentRefresh(); } catch (_) {}
+    }
+  }, fallbackMs);
+}
+
+function cancelRefresh() {
+  clearTimeout(primaryRefreshTimer);
+  clearTimeout(fallbackRefreshTimer);
+  primaryRefreshTimer = null;
+  fallbackRefreshTimer = null;
+}
+
+/* ---------------------------------------------------------
+   Silent refresh with retry
 --------------------------------------------------------- */
 async function silentRefresh() {
   await waitForGis();
   const client = initTokenClient();
   const token = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("silent refresh timeout")), 10000);
     client.callback = (resp) => {
+      clearTimeout(timeout);
       if (resp?.access_token) resolve(resp.access_token);
-      else reject(new Error("no token"));
+      else reject(new Error("no token in response"));
     };
-    client.error_callback = () => reject(new Error("silent refresh failed"));
+    client.error_callback = () => {
+      clearTimeout(timeout);
+      reject(new Error("silent refresh failed"));
+    };
     client.requestAccessToken({ prompt: "none" });
   });
   accessToken = token;
   tokenExpiresAt = Date.now() + 3500000;
   saveToken(accessToken, tokenExpiresAt);
+  refreshRetryCount = 0;
   setDriveStatus(true);
   scheduleRefresh();
   return accessToken;
+}
+
+/**
+ * Attempt silent refresh with retry logic.
+ * Returns the new token on success, or null if all retries fail.
+ */
+async function silentRefreshWithRetry() {
+  for (let attempt = 0; attempt < MAX_REFRESH_RETRIES; attempt++) {
+    try {
+      return await silentRefresh();
+    } catch (_) {
+      refreshRetryCount++;
+      if (attempt < MAX_REFRESH_RETRIES - 1) {
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      }
+    }
+  }
+  return null;
 }
 
 /* ---------------------------------------------------------
@@ -123,24 +182,27 @@ function initTokenClient() {
    Public: ensure valid access token
 --------------------------------------------------------- */
 export async function ensureAccessToken(interactive = true) {
-  if (accessToken && Date.now() < tokenExpiresAt - 30000) return accessToken;
+  // Already have a valid token in memory
+  if (isTokenValid()) return accessToken;
 
+  // Try loading from localStorage
   if (loadSavedToken()) {
-    if (Date.now() < tokenExpiresAt - 30000) {
+    if (isTokenValid()) {
       setDriveStatus(true);
       scheduleRefresh();
       return accessToken;
     }
-    try {
-      const token = await silentRefresh();
-      return token;
-    } catch (_) {
-      clearSavedToken();
-      accessToken = null;
-      tokenExpiresAt = 0;
-    }
+    // Token loaded but expired — try silent refresh
+    const refreshed = await silentRefreshWithRetry();
+    if (refreshed) return refreshed;
+    // Silent refresh failed
+    clearSavedToken();
+    accessToken = null;
+    tokenExpiresAt = 0;
   }
 
+  // No valid token available — need interactive consent or fail
+  if (!interactive) return null;
   if (!googleDriveConfig.clientId || googleDriveConfig.clientId.startsWith("PASTE_")) {
     throw new Error("Google Drive OAuth Client ID təyin olunmayıb.");
   }
@@ -153,6 +215,7 @@ export async function ensureAccessToken(interactive = true) {
         accessToken = resp.access_token;
         tokenExpiresAt = Date.now() + (resp.expires_in ? resp.expires_in * 1000 : 3500000);
         saveToken(accessToken, tokenExpiresAt);
+        refreshRetryCount = 0;
         setDriveStatus(true);
         scheduleRefresh();
         resolve(accessToken);
@@ -166,22 +229,19 @@ export async function ensureAccessToken(interactive = true) {
 }
 
 export function isDriveConnected() {
-  return !!accessToken && Date.now() < tokenExpiresAt;
+  return isTokenValid();
 }
 
 /* ---------------------------------------------------------
    Public: get an access token WITHOUT ever prompting the user.
-   Used as a best-effort fallback (e.g. by pdf-merge.js) — if
-   nobody has connected Drive in this browser yet, or the saved
-   token can't be silently refreshed, this simply resolves to
-   null instead of throwing or popping a login window.
+   Used as a best-effort fallback (e.g. by pdf-merge.js).
 --------------------------------------------------------- */
 export async function getSilentAccessToken() {
-  if (accessToken && Date.now() < tokenExpiresAt - 30000) return accessToken;
-  if (loadSavedToken() && Date.now() < tokenExpiresAt - 30000) return accessToken;
+  if (isTokenValid()) return accessToken;
+  if (loadSavedToken() && isTokenValid()) return accessToken;
   if (!googleDriveConfig.clientId || googleDriveConfig.clientId.startsWith("PASTE_")) return null;
   try {
-    return await silentRefresh();
+    return await silentRefreshWithRetry();
   } catch (_) {
     return null;
   }
@@ -197,6 +257,7 @@ export function signOutDrive() {
   cancelRefresh();
   clearSavedToken();
   clearFolderCache();
+  refreshRetryCount = 0;
   setDriveStatus(false);
 }
 
@@ -243,19 +304,12 @@ function clearFolderCache() {
   cachedFolderId = null;
 }
 
-/**
- * Find or create the year-based archive folder in Google Drive.
- * Returns the folder ID, using cache when possible.
- */
 async function ensureArchiveFolder(token) {
-  // Return cached if valid for this year
   if (cachedFolderId) return cachedFolderId;
   const cached = getFolderCache();
   if (cached) { cachedFolderId = cached; return cached; }
 
   const folderName = getArchiveFolderName();
-
-  // Search for existing folder
   const searchRes = await fetch(
     `${FILES_URL}?q=name='${encodeURIComponent(folderName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`,
     { headers: { "Authorization": `Bearer ${token}` } }
@@ -270,7 +324,6 @@ async function ensureArchiveFolder(token) {
     }
   }
 
-  // Folder doesn't exist — create it
   const createRes = await fetch(`${FILES_URL}?fields=id,name`, {
     method: "POST",
     headers: {
@@ -293,11 +346,6 @@ async function ensureArchiveFolder(token) {
   return created.id;
 }
 
-/**
- * Find or create an arbitrary named folder in Google Drive (not
- * year-based, not cached under the archive-folder keys). Used for
- * the "IstServices Merge Pdf" output folder.
- */
 async function ensureMergeFolder(token) {
   try {
     const cached = localStorage.getItem(MERGE_FOLDER_CACHE_KEY);
@@ -342,12 +390,6 @@ async function initiateResumableSession(file, token) {
   return initiateResumableSessionInFolder(file.name, file.type, folderId, token);
 }
 
-/**
- * Generic version of initiateResumableSession that uploads into an
- * arbitrary, already-resolved folder ID and accepts a plain
- * name/mimeType pair instead of requiring a File object — this lets
- * it be used for Blobs (like an in-memory merged PDF) too.
- */
 async function initiateResumableSessionInFolder(name, mimeType, folderId, token) {
   const metadata = { name, parents: [folderId] };
   const fields = "id,name,mimeType,size,webViewLink,webContentLink";
@@ -419,12 +461,6 @@ export async function uploadToDrive(file, onProgress) {
   };
 }
 
-/**
- * Upload an already-merged PDF (a Blob, not a File input) into the
- * shared "IstServices Merge Pdf" Drive folder. Requires an
- * interactive OAuth consent the first time it's used on a given
- * page/browser (same Google Identity flow as admin.html).
- */
 export async function uploadMergedPdf(blob, fileName, onProgress) {
   const token = await ensureAccessToken();
   const folderId = await ensureMergeFolder(token);
@@ -444,6 +480,7 @@ export async function deleteFromDrive(fileId) {
   if (!fileId) return;
   try {
     const token = await ensureAccessToken(false);
+    if (!token) return;
     await fetch(`${FILES_URL}/${fileId}`, {
       method: "DELETE",
       headers: { "Authorization": `Bearer ${token}` }
@@ -454,23 +491,70 @@ export async function deleteFromDrive(fileId) {
 }
 
 /* ---------------------------------------------------------
+   Visibility change — refresh when tab regains focus
+--------------------------------------------------------- */
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && accessToken && tokenExpiresAt) {
+    if (!isTokenValid()) {
+      silentRefreshWithRetry().catch(() => {});
+    } else {
+      scheduleRefresh();
+    }
+  }
+});
+
+/* ---------------------------------------------------------
+   Cross-tab sync — detect token changes in other tabs
+--------------------------------------------------------- */
+window.addEventListener("storage", (e) => {
+  if (e.key === STORAGE_KEY || e.key === STORAGE_EXPIRY) {
+    if (!e.newValue) {
+      // Another tab signed out
+      accessToken = null;
+      tokenExpiresAt = 0;
+      cancelRefresh();
+      setDriveStatus(false);
+    } else {
+      // Another tab refreshed the token — reload it
+      loadSavedToken();
+      if (isTokenValid()) {
+        setDriveStatus(true);
+        scheduleRefresh();
+      }
+    }
+  }
+});
+
+/* ---------------------------------------------------------
    Auto-load on module init
 --------------------------------------------------------- */
-if (loadSavedToken()) {
-  setDriveStatus(true);
-  scheduleRefresh();
-  // Pre-warm the year-archive folder cache — admin.html only (this
-  // module is also imported on index.html for the PDF merge feature,
-  // which has no use for the archive folder).
-  if (document.getElementById("drive-status-dot")) {
-    ensureArchiveFolder(accessToken).catch(() => {});
+(async function initDriveAuth() {
+  if (loadSavedToken()) {
+    setDriveStatus(true);
+    scheduleRefresh();
+    // Pre-warm the year-archive folder cache (admin.html only)
+    if (document.getElementById("drive-status-dot")) {
+      ensureArchiveFolder(accessToken).catch(() => {});
+    }
+  } else {
+    // Token expired or missing — attempt silent refresh on init
+    if (googleDriveConfig.clientId && !googleDriveConfig.clientId.startsWith("PASTE_")) {
+      try {
+        const token = await silentRefreshWithRetry();
+        if (token) {
+          setDriveStatus(true);
+          scheduleRefresh();
+          if (document.getElementById("drive-status-dot")) {
+            ensureArchiveFolder(accessToken).catch(() => {});
+          }
+        }
+      } catch (_) {}
+    }
   }
-}
+})();
 
 /* ==========================================================
    DUPLICATE FILE CHECK
-   Search the archive folder for a file with the exact same name.
-   Returns the existing file object if found, null otherwise.
    ========================================================== */
 export async function checkDuplicateInDrive(fileName) {
   const token = await ensureAccessToken(false);
@@ -487,7 +571,6 @@ export async function checkDuplicateInDrive(fileName) {
 
 /* ==========================================================
    RENAME FILE on Google Drive
-   Uses the PATCH endpoint to update only the name field.
    ========================================================== */
 export async function renameFileOnDrive(fileId, newName) {
   const token = await ensureAccessToken();
