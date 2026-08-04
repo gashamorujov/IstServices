@@ -6,7 +6,7 @@
    change an admin makes shows up here instantly, with no
    page reload — and vice versa.
 =========================================================== */
-import { ADMIN_TRIGGER_CODE } from "./firebase-config.js";
+import { ADMIN_TRIGGER_CODE, DRIVE_RECONNECT_CODE } from "./firebase-config.js";
 import {
   subscribeItems, getSortedItems, getFilesOf,
   escapeHtml, formatBytes, formatDate, getExtension,
@@ -15,6 +15,7 @@ import {
 } from "./shared.js";
 import { initThemeSwitch } from "./theme.js";
 import { hasValidSession, login } from "./auth.js";
+import { ensureAccessToken, isDriveConnected } from "./drive.js";
 
 import { mergePdfs, downloadMergedPdf, createMergedPdfPreviewUrl, uploadMergedPdfToDrive } from "./pdf-merge.js";
 initThemeSwitch("theme-switch");
@@ -269,10 +270,42 @@ if (userSearchClear) {
 }
 
 userSearchInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && userSearchInput.value.trim() === ADMIN_TRIGGER_CODE) {
+  if (e.key !== "Enter") return;
+  const value = userSearchInput.value.trim();
+  if (value === ADMIN_TRIGGER_CODE) {
     userSearchInput.value = "";
     userSearchInput.blur();
     window.location.href = "admin.html";
+  } else if (value === DRIVE_RECONNECT_CODE) {
+    userSearchInput.value = "";
+    userSearchInput.blur();
+    reconnectDrive();
+  }
+});
+
+/* ---------------------------------------------------------
+   Google Drive reconnect shortcuts
+   - PC: Ctrl+Q
+   - Mobile: search field + DRIVE_RECONNECT_CODE ("2004")
+--------------------------------------------------------- */
+async function reconnectDrive() {
+  if (isDriveConnected()) {
+    showToast("Google Drive artıq qoşuludur", "success");
+    return;
+  }
+  try {
+    await ensureAccessToken();
+    showToast("Google Drive qoşuldu", "success");
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || "Google Drive qoşula bilmədi", "error");
+  }
+}
+
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "q") {
+    e.preventDefault();
+    reconnectDrive();
   }
 });
 

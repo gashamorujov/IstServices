@@ -23,6 +23,10 @@ export const googleDriveConfig = {
 // Secret code that opens the Admin Panel from the search field
 export const ADMIN_TRIGGER_CODE = "1006";
 
+// Secret code that reconnects Google Drive from the search field
+// (mobile fallback for Ctrl+Q, which needs a physical keyboard)
+export const DRIVE_RECONNECT_CODE = "2004";
+
 // ---------------------------------------------------------------
 // Site login — bootstrap seed
 // ---------------------------------------------------------------

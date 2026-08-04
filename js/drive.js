@@ -21,6 +21,7 @@ let accessToken = null;
 let tokenExpiresAt = 0;
 let primaryRefreshTimer = null;
 let fallbackRefreshTimer = null;
+let refreshPromise = null;
 let refreshRetryCount = 0;
 const MAX_REFRESH_RETRIES = 3;
 let cachedFolderId = null;
@@ -100,15 +101,15 @@ function scheduleRefresh() {
   // Primary refresh: 5 minutes before expiry
   const primaryMs = Math.max(0, timeUntilExpiry - 300000);
   primaryRefreshTimer = setTimeout(async () => {
-    try { await silentRefresh(); } catch (_) {}
+    try { await silentRefreshWithRetry(); } catch (_) {}
   }, primaryMs);
 
-  // Fallback refresh: 1 minute before expiry (catches missed primary)
+  // Fallback refresh: 1 minute before expiry. If this fires at all it means
+  // the primary refresh failed (a successful refresh reschedules timers and
+  // cancels this one), so it always attempts a refresh instead of skipping.
   const fallbackMs = Math.max(0, timeUntilExpiry - 60000);
   fallbackRefreshTimer = setTimeout(async () => {
-    if (!isTokenValid()) {
-      try { await silentRefresh(); } catch (_) {}
-    }
+    try { await silentRefreshWithRetry(); } catch (_) {}
   }, fallbackMs);
 }
 
@@ -123,28 +124,33 @@ function cancelRefresh() {
    Silent refresh with retry
 --------------------------------------------------------- */
 async function silentRefresh() {
-  await waitForGis();
-  const client = initTokenClient();
-  const token = await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("silent refresh timeout")), 10000);
-    client.callback = (resp) => {
-      clearTimeout(timeout);
-      if (resp?.access_token) resolve(resp.access_token);
-      else reject(new Error("no token in response"));
-    };
-    client.error_callback = () => {
-      clearTimeout(timeout);
-      reject(new Error("silent refresh failed"));
-    };
-    client.requestAccessToken({ prompt: "none" });
-  });
-  accessToken = token;
-  tokenExpiresAt = Date.now() + 3500000;
-  saveToken(accessToken, tokenExpiresAt);
-  refreshRetryCount = 0;
-  setDriveStatus(true);
-  scheduleRefresh();
-  return accessToken;
+  // Guard against concurrent refreshes (timer + visibilitychange + API call)
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    await waitForGis();
+    const client = initTokenClient();
+    const token = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("silent refresh timeout")), 10000);
+      client.callback = (resp) => {
+        clearTimeout(timeout);
+        if (resp?.access_token) resolve(resp.access_token);
+        else reject(new Error("no token in response"));
+      };
+      client.error_callback = () => {
+        clearTimeout(timeout);
+        reject(new Error("silent refresh failed"));
+      };
+      client.requestAccessToken({ prompt: "none" });
+    });
+    accessToken = token;
+    tokenExpiresAt = Date.now() + 3500000;
+    saveToken(accessToken, tokenExpiresAt);
+    refreshRetryCount = 0;
+    setDriveStatus(true);
+    scheduleRefresh();
+    return accessToken;
+  })().finally(() => { refreshPromise = null; });
+  return refreshPromise;
 }
 
 /**

@@ -146,6 +146,29 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+/* Google Drive reconnect shortcut (PC: Ctrl+Q) */
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "q") {
+    e.preventDefault();
+    reconnectDriveFromAdmin();
+  }
+});
+
+async function reconnectDriveFromAdmin() {
+  if (isDriveConnected()) {
+    showToast("Google Drive artıq qoşuludur", "success");
+    return;
+  }
+  try {
+    await ensureAccessToken();
+    showToast("Google Drive qoşuldu", "success");
+    updateDriveSignoutVisibility();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || "Google Drive qoşula bilmədi", "error");
+  }
+}
+
 /* ---------------------------------------------------------
    Settings view
 --------------------------------------------------------- */
@@ -845,6 +868,17 @@ if (adminSearchInput) {
     adminSearchTerm = adminSearchInput.value;
     if (adminSearchClear) adminSearchClear.classList.toggle("visible", adminSearchTerm.length > 0);
     renderItemsGrid();
+  });
+
+  /* Mobile fallback: search "2004" + Enter reconnects Google Drive */
+  adminSearchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && adminSearchInput.value.trim() === "2004") {
+      adminSearchInput.value = "";
+      adminSearchTerm = "";
+      if (adminSearchClear) adminSearchClear.classList.remove("visible");
+      renderItemsGrid();
+      reconnectDriveFromAdmin();
+    }
   });
 }
 
