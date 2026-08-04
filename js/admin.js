@@ -259,14 +259,13 @@ async function collectAllPdfs() {
   const files = [];
   const listeners = Object.entries(itemsData || {});
   for (const [itemId, item] of listeners) {
-    const listenerName = sanitizeZipName(item?.name || "Dinləyici");
     const fileEntries = Object.entries((item && item.files) || {});
     for (const [fileId, f] of fileEntries) {
       const isPdf =
         (f.mimeType && f.mimeType === "application/pdf") ||
         (f.name && /\.pdf$/i.test(f.name));
       if (!isPdf) continue;
-      files.push({ id: fileId, name: f.name || "fayl.pdf", driveFileId: f.driveFileId, url: f.url, size: f.size, listenerName });
+      files.push({ id: fileId, name: f.name || "fayl.pdf", driveFileId: f.driveFileId, url: f.url, size: f.size });
     }
   }
   return files;
@@ -328,6 +327,7 @@ if (adminExportPdfsBtn) {
       showToast(pdfs.length + " PDF tapıldı, yüklənir...", "");
       const JSZip = await loadJszip();
       const zip = new JSZip();
+      const usedNames = new Set();
       const BATCH = 4;
       let done = 0, failed = 0;
       const total = pdfs.length;
@@ -356,8 +356,17 @@ if (adminExportPdfsBtn) {
         for (const result of results) {
           if (result.status === "fulfilled" && result.value.buf.byteLength > 0) {
             const { pdf, buf } = result.value;
-            const path = pdf.listenerName + "/" + sanitizeZipName(pdf.name);
-            zip.file(path, buf);
+            let fileName = sanitizeZipName(pdf.name);
+            // Ensure .pdf extension
+            if (!/\.pdf$/i.test(fileName)) fileName += ".pdf";
+            // Avoid duplicate filenames in the flat ZIP
+            let uniqueName = fileName;
+            let dup = 2;
+            while (usedNames.has(uniqueName)) {
+              uniqueName = fileName.replace(/\.pdf$/i, "") + "_" + (dup++) + ".pdf";
+            }
+            usedNames.add(uniqueName);
+            zip.file(uniqueName, buf);
           } else {
             failed++;
           }
