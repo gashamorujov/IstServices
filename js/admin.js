@@ -248,11 +248,15 @@ function loadJszip() {
 }
 
 function sanitizeZipName(name) {
-  // Keep a readable name but strip characters illegal in zip paths
+  // Keep a readable name but strip characters illegal in zip paths.
+  // Also flatten any directory separators so the ZIP stays flat —
+  // every PDF ends up directly at the zip root, no folders.
   return String(name || "fayl")
     .replace(/[\\/:*?"<>|]/g, "_")
     .replace(/\s+/g, " ")
-    .trim() || "fayl";
+    .trim()
+    .replace(/^[.]+$/, "_")
+    .substring(0, 180) || "fayl";
 }
 
 async function collectAllPdfs() {
